@@ -31,6 +31,8 @@ use Stringer\Laravel\Enums\TopicStatus;
  */
 final class BlogTopic extends Model
 {
+    // Supported writes go through Services\TopicQueue; direct mass-assignment
+    // is not the documented path, so the broad guard is intentional.
     protected $guarded = [];
 
     /**
@@ -40,7 +42,6 @@ final class BlogTopic extends Model
         'status' => TopicStatus::class,
         'source' => TopicSource::class,
         'drafted_at' => 'datetime',
-        'requested_by_chat_id' => 'integer',
     ];
 
     public function __construct(array $attributes = [])

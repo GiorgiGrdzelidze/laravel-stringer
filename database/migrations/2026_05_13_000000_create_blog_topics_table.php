@@ -6,6 +6,13 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * The FK on `article_id` is added only when the host's articles table
+ * already exists at migration time. Hosts whose articles migration ships
+ * after Stringer's must either re-run this migration via `migrate:fresh`
+ * or add the constraint manually in a follow-up migration — there is no
+ * deferred-FK path in v0.1.0.
+ */
 return new class extends Migration
 {
     public function up(): void
