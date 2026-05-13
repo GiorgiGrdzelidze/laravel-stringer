@@ -65,10 +65,25 @@ return [
     | Table names
     |--------------------------------------------------------------------------
     | Override if the host already has a `blog_topics` table for a different
-    | purpose.
+    | purpose, or names its articles table something other than `articles`.
+    | `articles` is consulted to add the FK on `blog_topics.article_id` at
+    | migration time; if the host table doesn't exist yet the FK is skipped.
     */
     'tables' => [
         'blog_topics' => 'blog_topics',
+        'articles' => env('STRINGER_ARTICLES_TABLE', 'articles'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Host model classes
+    |--------------------------------------------------------------------------
+    | `models.article` names the host's Eloquent class so `BlogTopic::article()`
+    | can resolve the relationship. Required only if the host needs to use the
+    | relationship — the migration runs without it.
+    */
+    'models' => [
+        'article' => env('STRINGER_ARTICLE_MODEL'),
     ],
 
     /*
