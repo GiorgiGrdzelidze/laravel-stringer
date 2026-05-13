@@ -1,0 +1,9 @@
+parameters:
+    level: 6
+    paths:
+        - src
+        - tests
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false
+    parallel:
+        maximumNumberOfProcesses: 1

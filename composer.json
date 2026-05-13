@@ -1,0 +1,80 @@
+{
+    "name": "giorgigrdzelidze/laravel-stringer",
+    "description": "Telegram-driven LLM blog drafter for Laravel. Generates per-locale drafts for human review — never publishes.",
+    "keywords": [
+        "laravel",
+        "telegram",
+        "ai",
+        "llm",
+        "blog",
+        "content",
+        "filament",
+        "gemini"
+    ],
+    "homepage": "https://github.com/GiorgiGrdzelidze/laravel-stringer",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Giorgi Grdzelidze",
+            "homepage": "https://grdzelo.com",
+            "role": "Maintainer"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/GiorgiGrdzelidze/laravel-stringer/issues",
+        "source": "https://github.com/GiorgiGrdzelidze/laravel-stringer"
+    },
+    "require": {
+        "php": "^8.2",
+        "illuminate/database": "^12.0 || ^13.0",
+        "illuminate/http": "^12.0 || ^13.0",
+        "illuminate/queue": "^12.0 || ^13.0",
+        "illuminate/support": "^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.18",
+        "orchestra/testbench": "^9.0 || ^10.0",
+        "pestphp/pest": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0",
+        "phpstan/phpstan": "^2.0"
+    },
+    "suggest": {
+        "filament/filament": "Install Filament v5 to get the BlogTopicResource admin UI"
+    },
+    "autoload": {
+        "psr-4": {
+            "Stringer\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Stringer\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Stringer\\Laravel\\StringerServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "phpstan": "vendor/bin/phpstan analyse",
+        "pint": "vendor/bin/pint",
+        "ci": [
+            "@test",
+            "@phpstan",
+            "@pint -- --test"
+        ]
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
