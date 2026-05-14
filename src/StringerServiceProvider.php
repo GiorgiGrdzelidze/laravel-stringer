@@ -8,6 +8,7 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Llm\LlmManager;
+use Stringer\Laravel\Services\TopicQueue;
 
 final class StringerServiceProvider extends ServiceProvider
 {
@@ -20,6 +21,8 @@ final class StringerServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(LlmClient::class, fn (Application $app): LlmClient => $app->make(LlmManager::class)->make());
+
+        $this->app->singleton(TopicQueue::class);
     }
 
     public function boot(): void
