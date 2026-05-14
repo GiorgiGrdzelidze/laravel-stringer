@@ -25,6 +25,8 @@ use Stringer\Laravel\Enums\TopicStatus;
  * @property string|null $generated_by
  * @property string|null $last_error
  * @property int|null $requested_by_chat_id
+ * @property bool $auto_publish
+ * @property string|null $target_status
  * @property Carbon|null $drafted_at
  * @property Carbon $created_at
  * @property Carbon $updated_at
@@ -41,7 +43,16 @@ final class BlogTopic extends Model
     protected $casts = [
         'status' => TopicStatus::class,
         'source' => TopicSource::class,
+        'auto_publish' => 'boolean',
         'drafted_at' => 'datetime',
+    ];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'auto_publish' => false,
+        'target_status' => 'draft',
     ];
 
     public function __construct(array $attributes = [])
