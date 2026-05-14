@@ -32,7 +32,7 @@ final class LlmManager
     {
         $driver = (string) $this->config->get('stringer.llm.driver', '');
         $apiKey = (string) $this->config->get("stringer.llm.api_keys.{$driver}", '');
-        $model = (string) $this->config->get("stringer.llm.models.{$driver}", '');
+        $model = $this->modelName();
 
         return match ($driver) {
             'gemini' => new GeminiClient($apiKey, $model),
@@ -43,5 +43,16 @@ final class LlmManager
                 "Unknown LLM driver '{$driver}'. Supported: gemini, claude, openai, groq."
             ),
         };
+    }
+
+    /**
+     * Returns the model identifier the configured driver will use — handy
+     * for recording on `BlogTopic.generated_by` after a successful draft.
+     */
+    public function modelName(): string
+    {
+        $driver = (string) $this->config->get('stringer.llm.driver', '');
+
+        return (string) $this->config->get("stringer.llm.models.{$driver}", '');
     }
 }

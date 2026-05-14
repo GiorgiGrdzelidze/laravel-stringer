@@ -64,13 +64,15 @@ return [
     |--------------------------------------------------------------------------
     | Table names
     |--------------------------------------------------------------------------
-    | Override if the host already has a `blog_topics` table for a different
+    | Override if the host already has tables with these names for a different
     | purpose, or names its articles table something other than `articles`.
     | `articles` is consulted to add the FK on `blog_topics.article_id` at
     | migration time; if the host table doesn't exist yet the FK is skipped.
     */
     'tables' => [
         'blog_topics' => 'blog_topics',
+        'stringer_prompts' => 'stringer_prompts',
+        'stringer_content_fields' => 'stringer_content_fields',
         'articles' => env('STRINGER_ARTICLES_TABLE', 'articles'),
     ],
 
@@ -90,13 +92,25 @@ return [
     |--------------------------------------------------------------------------
     | Voice
     |--------------------------------------------------------------------------
-    | The package ships a neutral default. Hosts override this to match
-    | their own tone (e.g. technical-dry for grdzelo, traveler-evocative
-    | for explore-georgia).
+    | Baked-in fallback used by DefaultPromptBuilder when ManageStringerSettings
+    | (Filament) hasn't been touched. Hosts override this to match their own
+    | tone (e.g. technical-dry for grdzelo, traveler-evocative for
+    | explore-georgia).
     */
     'voice' => [
         'default' => 'clear, accurate, no marketing fluff',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default seeding
+    |--------------------------------------------------------------------------
+    | Auto-runs the StringerDefaultPrompts / StringerDefaultContentFields
+    | seeders on boot if the relevant tables are present and empty. Each
+    | seeder is run-once-guarded, so this is idempotent. Tests typically
+    | disable this so they can assert on an empty schema.
+    */
+    'seed_defaults_on_boot' => env('STRINGER_SEED_DEFAULTS_ON_BOOT', true),
 
     /*
     |--------------------------------------------------------------------------

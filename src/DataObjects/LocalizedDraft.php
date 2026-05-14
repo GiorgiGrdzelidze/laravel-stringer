@@ -7,47 +7,48 @@ namespace Stringer\Laravel\DataObjects;
 use InvalidArgumentException;
 
 /**
- * Immutable per-locale draft passed from the generator to the host's
- * ContentTarget. Each locale carries title + excerpt + body; the primary
- * locale is the one the LLM drafted in (others are translations).
+ * Immutable, dynamic-shape draft passed from `DraftGenerator` to the
+ * host's `ContentTarget`.
+ *
+ * Keys are `StringerContentField.name` values; their value shape depends
+ * on the field's `FieldType`:
+ *
+ * - `TranslatableString` / `TranslatableMarkdown` → `array<string, string>`
+ *   keyed by locale, e.g. `['en' => '…', 'ka' => '…', 'ru' => '…']`.
+ * - `String` / `Markdown` → `string`.
+ * - `TagList` → `list<string>`.
+ * - `Category` → `?string` (the slug) or null.
+ * - `Integer` → `int`.
+ *
+ * The DTO does not enforce per-field shape — that's the host adapter's job
+ * via the field-type `match()` in `ArticleTarget::write()`.
  */
 final readonly class LocalizedDraft
 {
     /**
-     * @param  array<string, array{title: string, excerpt: string, body: string}>  $translations
+     * @param  array<string, mixed>  $fields  Keyed by `StringerContentField.name`.
      */
-    public function __construct(
-        public array $translations,
-        public string $primaryLocale,
-    ) {
-        if ($translations === []) {
-            throw new InvalidArgumentException('LocalizedDraft requires at least one translation.');
-        }
+    public function __construct(public array $fields) {}
 
-        if (! array_key_exists($primaryLocale, $translations)) {
-            throw new InvalidArgumentException(
-                "Primary locale '{$primaryLocale}' is not present in translations."
-            );
-        }
+    public function has(string $name): bool
+    {
+        return array_key_exists($name, $this->fields);
     }
 
-    /**
-     * @return array{title: string, excerpt: string, body: string}
-     */
-    public function forLocale(string $locale): array
+    public function field(string $name): mixed
     {
-        if (! array_key_exists($locale, $this->translations)) {
-            throw new InvalidArgumentException("Locale '{$locale}' is not in the draft.");
+        if (! $this->has($name)) {
+            throw new InvalidArgumentException("Field '{$name}' is not in the draft.");
         }
 
-        return $this->translations[$locale];
+        return $this->fields[$name];
     }
 
     /**
      * @return list<string>
      */
-    public function locales(): array
+    public function names(): array
     {
-        return array_keys($this->translations);
+        return array_keys($this->fields);
     }
 }

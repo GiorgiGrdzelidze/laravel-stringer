@@ -62,3 +62,20 @@ it('re-reads config on every make() so runtime driver swaps take effect', functi
 
     expect($manager->make())->toBeInstanceOf(ClaudeClient::class);
 });
+
+it('exposes the active driver\'s model identifier via modelName()', function () use ($llmConfig) {
+    $config = $llmConfig('gemini');
+    $manager = new LlmManager($config);
+
+    expect($manager->modelName())->toBe('gemini-2.0-flash');
+
+    $config->set('stringer.llm.driver', 'claude');
+
+    expect($manager->modelName())->toBe('claude-sonnet-4-5');
+});
+
+it('modelName() returns the empty string when the driver name is unknown', function () use ($llmConfig) {
+    $manager = new LlmManager($llmConfig('mystery'));
+
+    expect($manager->modelName())->toBe('');
+});
