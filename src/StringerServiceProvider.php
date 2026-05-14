@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stringer\Laravel;
 
+use Filament\FilamentManager;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -12,6 +13,10 @@ use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder;
+use Stringer\Laravel\Filament\Pages\ManageStringerSettings;
+use Stringer\Laravel\Filament\Resources\BlogTopicResource\BlogTopicResource;
+use Stringer\Laravel\Filament\Resources\StringerContentFieldResource\StringerContentFieldResource;
+use Stringer\Laravel\Filament\Resources\StringerPromptResource\StringerPromptResource;
 use Stringer\Laravel\Http\Controllers\TelegramWebhookController;
 use Stringer\Laravel\Http\Middleware\VerifyTelegramSecret;
 use Stringer\Laravel\Llm\LlmManager;
@@ -46,6 +51,7 @@ final class StringerServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         $this->registerTelegramWebhookRoute();
+        $this->registerFilamentResources();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -58,6 +64,43 @@ final class StringerServiceProvider extends ServiceProvider
 
             $this->autoSeedDefaults();
         }
+    }
+
+    /**
+     * Auto-register the three Filament resources + the Settings page on
+     * every panel that's being served.
+     *
+     * Two guards: `class_exists` (filament/filament package installed),
+     * and `app->bound('filament')` (a Panel provider has actually been
+     * registered). The second guard is what keeps Orchestra Testbench
+     * happy — vendor autoload loads the Filament classes, but the test
+     * harness boots without a Panel so the `filament` singleton isn't
+     * bound and `Filament::serving()` would otherwise resolve nothing.
+     */
+    private function registerFilamentResources(): void
+    {
+        if (! class_exists(FilamentManager::class)) {
+            return;
+        }
+
+        if (! $this->app->bound('filament')) {
+            return;
+        }
+
+        /** @var FilamentManager $manager */
+        $manager = $this->app->make('filament');
+
+        $manager->serving(function () use ($manager): void {
+            $manager->registerResources([
+                BlogTopicResource::class,
+                StringerPromptResource::class,
+                StringerContentFieldResource::class,
+            ]);
+
+            $manager->registerPages([
+                ManageStringerSettings::class,
+            ]);
+        });
     }
 
     private function registerTelegramWebhookRoute(): void
