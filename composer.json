@@ -1,6 +1,6 @@
 {
     "name": "giorgigrdzelidze/laravel-stringer",
-    "description": "Telegram-driven LLM blog drafter for Laravel. Generates per-locale drafts for human review — never publishes.",
+    "description": "Telegram-driven LLM blog drafter for Laravel. Generates per-locale drafts for human review; auto-publish opt-in per topic.",
     "keywords": [
         "laravel",
         "telegram",
@@ -30,7 +30,8 @@
         "illuminate/database": "^12.0 || ^13.0",
         "illuminate/http": "^12.0 || ^13.0",
         "illuminate/queue": "^12.0 || ^13.0",
-        "illuminate/support": "^12.0 || ^13.0"
+        "illuminate/support": "^12.0 || ^13.0",
+        "spatie/laravel-tags": "^4.0 || ^5.0"
     },
     "require-dev": {
         "larastan/larastan": "^3.0",
@@ -41,11 +42,12 @@
         "phpstan/phpstan": "^2.0"
     },
     "suggest": {
-        "filament/filament": "Install Filament v5 to get the BlogTopicResource admin UI"
+        "filament/filament": "Install Filament v5 to get BlogTopic / StringerPrompt / StringerContentField resources + the Settings page"
     },
     "autoload": {
         "psr-4": {
-            "Stringer\\Laravel\\": "src/"
+            "Stringer\\Laravel\\": "src/",
+            "Stringer\\Laravel\\Database\\Seeders\\": "database/seeders/"
         }
     },
     "autoload-dev": {

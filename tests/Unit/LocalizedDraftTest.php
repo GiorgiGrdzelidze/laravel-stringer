@@ -4,57 +4,64 @@ declare(strict_types=1);
 
 use Stringer\Laravel\DataObjects\LocalizedDraft;
 
-it('rejects an empty translation set', function () {
-    expect(fn () => new LocalizedDraft([], 'en'))
-        ->toThrow(InvalidArgumentException::class, 'at least one translation');
-});
-
-it('rejects a primary locale that is not in the translation set', function () {
-    $translations = [
-        'ka' => ['title' => 't', 'excerpt' => 'e', 'body' => 'b'],
+it('exposes fields verbatim via the public property', function () {
+    $fields = [
+        'title' => ['en' => 'Title EN', 'ka' => 'სათაური', 'ru' => 'Заголовок'],
+        'tags' => ['laravel', 'php', 'queues'],
+        'category' => 'backend',
     ];
 
-    expect(fn () => new LocalizedDraft($translations, 'en'))
-        ->toThrow(InvalidArgumentException::class, "Primary locale 'en'");
+    $draft = new LocalizedDraft($fields);
+
+    expect($draft->fields)->toBe($fields);
 });
 
-it('returns the payload for a locale present in the draft', function () {
-    $payload = ['title' => 'Title', 'excerpt' => 'Excerpt', 'body' => 'Body'];
-    $draft = new LocalizedDraft(['en' => $payload], 'en');
+it('returns the value for a present field via field()', function () {
+    $draft = new LocalizedDraft([
+        'title' => ['en' => 'Title'],
+        'tags' => ['a', 'b'],
+    ]);
 
-    expect($draft->forLocale('en'))->toBe($payload);
+    expect($draft->field('title'))->toBe(['en' => 'Title'])
+        ->and($draft->field('tags'))->toBe(['a', 'b']);
 });
 
-it('throws when asking for a locale that is not in the draft', function () {
-    $draft = new LocalizedDraft(
-        ['en' => ['title' => 't', 'excerpt' => 'e', 'body' => 'b']],
-        'en',
-    );
+it('throws when asking for a field that is not in the draft', function () {
+    $draft = new LocalizedDraft(['title' => ['en' => 'Title']]);
 
-    expect(fn () => $draft->forLocale('ka'))
-        ->toThrow(InvalidArgumentException::class, "Locale 'ka'");
+    expect(fn () => $draft->field('excerpt'))
+        ->toThrow(InvalidArgumentException::class, "Field 'excerpt' is not in the draft.");
 });
 
-it('lists locales in insertion order', function () {
-    $draft = new LocalizedDraft(
-        [
-            'en' => ['title' => '', 'excerpt' => '', 'body' => ''],
-            'ka' => ['title' => '', 'excerpt' => '', 'body' => ''],
-            'ru' => ['title' => '', 'excerpt' => '', 'body' => ''],
-        ],
-        'en',
-    );
+it('has() reports presence without throwing', function () {
+    $draft = new LocalizedDraft(['title' => ['en' => 'T']]);
 
-    expect($draft->locales())->toBe(['en', 'ka', 'ru']);
+    expect($draft->has('title'))->toBeTrue()
+        ->and($draft->has('missing'))->toBeFalse();
 });
 
-it('is immutable — translations are exposed as a readonly property', function () {
-    $draft = new LocalizedDraft(
-        ['en' => ['title' => '', 'excerpt' => '', 'body' => '']],
-        'en',
-    );
+it('names() preserves insertion order', function () {
+    $draft = new LocalizedDraft([
+        'title' => 'a',
+        'excerpt' => 'b',
+        'body' => 'c',
+        'tags' => [],
+        'category' => null,
+    ]);
 
-    $reflection = new ReflectionClass($draft);
+    expect($draft->names())->toBe(['title', 'excerpt', 'body', 'tags', 'category']);
+});
+
+it('accepts an empty fields array (no implicit minimum)', function () {
+    $draft = new LocalizedDraft([]);
+
+    expect($draft->fields)->toBe([])
+        ->and($draft->names())->toBe([])
+        ->and($draft->has('anything'))->toBeFalse();
+});
+
+it('is final readonly', function () {
+    $reflection = new ReflectionClass(LocalizedDraft::class);
 
     expect($reflection->isReadOnly())->toBeTrue()
         ->and($reflection->isFinal())->toBeTrue();
