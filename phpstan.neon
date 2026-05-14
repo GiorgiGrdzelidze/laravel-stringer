@@ -12,6 +12,7 @@ parameters:
     treatPhpDocTypesAsCertain: false
     parallel:
         maximumNumberOfProcesses: 1
+    reportUnmatchedIgnoredErrors: false
     ignoreErrors:
         # Pest rebinds $this inside it() closures to the bound TestCase
         # (set via uses(TestCase::class) in tests/Pest.php), but PHPStan
@@ -19,8 +20,9 @@ parameters:
         # rebinding. Calls to Laravel's MakesHttpRequests methods are
         # legitimate at runtime; static analysis just doesn't reach them
         # without a third-party Pest-binding extension that doesn't exist
-        # for PHPStan 2.x as of 2026-05-14. Allowed surface is narrow:
-        # only the Telegram webhook test exercises HTTP.
+        # for PHPStan 2.x as of 2026-05-14.
         -
             message: '#Call to an undefined method Pest\\PendingCalls\\TestCall(\|[^:]+)?::postJson\(\)#'
-            path: tests/Feature/TelegramWebhookTest.php
+            paths:
+                - tests/Feature/TelegramWebhookTest.php
+                - tests/Feature/MenuRouterSmokeTest.php

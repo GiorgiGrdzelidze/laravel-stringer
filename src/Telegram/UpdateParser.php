@@ -38,10 +38,15 @@ final class UpdateParser
 
         [$command, $remainder] = $this->extractCommand($text);
 
+        $messageId = isset($message['message_id']) && is_numeric($message['message_id'])
+            ? (int) $message['message_id']
+            : null;
+
         return new ParsedCommand(
             command: $command,
             text: $remainder,
             chatId: (int) $chat['id'],
+            messageId: $messageId,
         );
     }
 
