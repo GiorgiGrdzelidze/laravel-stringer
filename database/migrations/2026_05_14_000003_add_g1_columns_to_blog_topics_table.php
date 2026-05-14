@@ -18,9 +18,13 @@ return new class extends Migration
     {
         $table = config('stringer.tables.blog_topics', 'blog_topics');
 
+        // Position is intentionally not pinned via ->after() — that clause
+        // is MySQL-only and a silent no-op on SQLite (the CI driver), so
+        // depending on it makes column order non-portable. Hosts that care
+        // about column order can rearrange manually.
         Schema::table($table, function (Blueprint $table) {
-            $table->boolean('auto_publish')->default(false)->after('requested_by_chat_id');
-            $table->string('target_status')->nullable()->default('draft')->after('auto_publish');
+            $table->boolean('auto_publish')->default(false);
+            $table->string('target_status')->nullable()->default('draft');
         });
     }
 

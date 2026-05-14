@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder;
@@ -100,4 +101,40 @@ it('exposes the active scope on content fields', function () {
 
     expect(StringerContentField::active()->ordered()->get()->pluck('name')->all())
         ->toBe(['title', 'excerpt', 'body', 'category']);
+});
+
+it('rejects duplicate content_field names via the unique index', function () {
+    StringerContentField::query()->insert([
+        'name' => 'title',
+        'type' => FieldType::String->value,
+        'instruction' => 'first',
+        'is_required' => true,
+        'sort_order' => 0,
+        'is_active' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => StringerContentField::query()->insert([
+        'name' => 'title',
+        'type' => FieldType::String->value,
+        'instruction' => 'duplicate',
+        'is_required' => true,
+        'sort_order' => 0,
+        'is_active' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]))->toThrow(QueryException::class);
+});
+
+it('honors config-driven table names for StringerPrompt', function () {
+    config()->set('stringer.tables.stringer_prompts', 'stringer_prompts_alt');
+
+    expect((new StringerPrompt)->getTable())->toBe('stringer_prompts_alt');
+});
+
+it('honors config-driven table names for StringerContentField', function () {
+    config()->set('stringer.tables.stringer_content_fields', 'stringer_content_fields_alt');
+
+    expect((new StringerContentField)->getTable())->toBe('stringer_content_fields_alt');
 });
