@@ -19,14 +19,22 @@ use Stringer\Laravel\Models\BlogTopic;
 use Stringer\Laravel\Models\StringerContentField;
 
 /**
- * One topic → one draft, wrapped in a single DB transaction.
+ * One topic → one draft.
  *
- * Reads the active `StringerContentField` rows at call time so the field
- * schema is dynamic. The LLM is asked for a single JSON object keyed by
- * field name; translatable fields are translated per non-primary locale
- * via a second LLM call each. On any failure inside the transaction the
- * host's `ContentTarget::write()` is never reached and the topic stays
- * untouched — `GenerateDraftJob` (Phase 7) marks it Failed externally.
+ * Two phases:
+ *  1. **LLM phase (outside any DB transaction).** Reads active
+ *     `StringerContentField` rows at call time so the field schema is
+ *     dynamic. Asks the LLM for a single JSON object keyed by field
+ *     name; for each translatable field, makes one translation call per
+ *     non-primary locale. Slow HTTP — kept out of the transaction so it
+ *     doesn't hold a DB connection open for 30+ seconds.
+ *  2. **Write phase (single DB transaction).** `ContentTarget::write` +
+ *     `TopicQueue::markDrafted` happen together inside `DB::transaction`,
+ *     so a failure in either rolls both back atomically.
+ *
+ * A throw in the LLM phase propagates up before the transaction even
+ * opens — the topic stays in its current state and `GenerateDraftJob`'s
+ * retry / failed() path handles it.
  *
  * The status transition into `Drafting` is intentionally owned by
  * `GenerateDraftJob` (Phase 7), not by this class — the generator is
@@ -49,20 +57,27 @@ final class DraftGenerator
         /** @var list<StringerContentField> $fields */
         $fields = StringerContentField::query()->active()->ordered()->get()->all();
         $context = $this->contextBuilder->build();
+        $llm = $this->llmManager->make();
 
-        return DB::transaction(function () use ($topic, $context, $fields): Model {
-            $llm = $this->llmManager->make();
+        // LLM round-trips are slow and don't write to the DB — keep them
+        // outside the transaction so a multi-locale draft doesn't hold a
+        // DB connection open for 30+ seconds. If any LLM call throws, no
+        // transaction has been opened yet, the topic stays in its current
+        // state, and the queue worker's retry / failed() path handles it.
+        $prompt = $this->promptBuilder->buildDraftPrompt($topic, $context, $fields);
+        $rawDraft = $llm->draft($prompt, $context);
+        $primary = $this->parseLlmJson($rawDraft, $fields);
 
-            $prompt = $this->promptBuilder->buildDraftPrompt($topic, $context, $fields);
-            $rawDraft = $llm->draft($prompt, $context);
-            $primary = $this->parseLlmJson($rawDraft, $fields);
+        $primaryLocale = (string) $this->config->get('stringer.locales.primary', 'en');
+        /** @var list<string> $locales */
+        $locales = (array) $this->config->get('stringer.locales.list', [$primaryLocale]);
 
-            $primaryLocale = (string) $this->config->get('stringer.locales.primary', 'en');
-            /** @var list<string> $locales */
-            $locales = (array) $this->config->get('stringer.locales.list', [$primaryLocale]);
+        $finalFields = $this->localizeFields($primary, $fields, $primaryLocale, $locales, $llm);
 
-            $finalFields = $this->localizeFields($primary, $fields, $primaryLocale, $locales, $llm);
-
+        // The transaction wraps only the two writes that have to succeed
+        // together: the host's content target + the topic's status flip
+        // to Drafted (which records article_id + generated_by).
+        return DB::transaction(function () use ($topic, $finalFields): Model {
             $result = $this->target->write(new LocalizedDraft($finalFields), $topic);
 
             $this->topicQueue->markDrafted($topic, $result, $this->llmManager->modelName());
