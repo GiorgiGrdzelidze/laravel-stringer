@@ -6,6 +6,7 @@ use Illuminate\Contracts\Container\BindingResolutionException;
 use Stringer\Laravel\Contracts\ContentTarget;
 use Stringer\Laravel\Contracts\ContextBuilder;
 use Stringer\Laravel\Contracts\LlmClient;
+use Stringer\Laravel\Llm\Drivers\GeminiClient;
 use Stringer\Laravel\StringerServiceProvider;
 
 it('registers the service provider', function () {
@@ -19,8 +20,8 @@ it('merges the package config', function () {
         ->and(config('stringer.tables.blog_topics'))->toBe('blog_topics');
 });
 
-it('does not yet bind LlmClient (deferred to Phase 4)', function () {
-    expect(fn () => app(LlmClient::class))->toThrow(BindingResolutionException::class);
+it('binds LlmClient to the configured driver', function () {
+    expect(app(LlmClient::class))->toBeInstanceOf(GeminiClient::class);
 });
 
 it('does not bind host contracts — those are the host adapter\'s job', function () {
