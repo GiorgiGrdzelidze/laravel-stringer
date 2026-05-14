@@ -26,7 +26,7 @@ final class SpikeCommand implements Command
         $arg = trim($command->text);
 
         if (preg_match('/^\d+$/', $arg) !== 1) {
-            $this->telegram->sendMessage($command->chatId, 'გამოყენება: /spike {id}');
+            $this->telegram->sendMessage($command->chatId, 'Usage: /spike {id}');
 
             return;
         }
@@ -35,13 +35,13 @@ final class SpikeCommand implements Command
         $topic = BlogTopic::query()->find($topicId);
 
         if (! $topic instanceof BlogTopic) {
-            $this->telegram->sendMessage($command->chatId, "თემა #{$topicId} ვერ მოიძებნა.");
+            $this->telegram->sendMessage($command->chatId, "Topic #{$topicId} not found.");
 
             return;
         }
 
         $this->queue->markRejected($topic);
 
-        $this->telegram->sendMessage($command->chatId, "თემა #{$topic->id} უარყოფილია.");
+        $this->telegram->sendMessage($command->chatId, "Topic #{$topic->id} rejected.");
     }
 }

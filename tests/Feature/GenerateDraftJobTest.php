@@ -12,6 +12,7 @@ use Stringer\Laravel\Enums\TopicSource;
 use Stringer\Laravel\Enums\TopicStatus;
 use Stringer\Laravel\Jobs\GenerateDraftJob;
 use Stringer\Laravel\Models\BlogTopic;
+use Stringer\Laravel\Services\AiTellSanitizer;
 use Stringer\Laravel\Services\DraftGenerator;
 use Stringer\Laravel\Services\TopicQueue;
 use Stringer\Laravel\Tests\Doubles\CapturingContentTarget;
@@ -41,6 +42,7 @@ function bindDraftGeneratorWithScriptedLlm(ScriptedLlmClient $llm): void
         new TopicQueue,
         /** @var Repository $cfg */
         $cfg = app('config'),
+        new AiTellSanitizer,
     ));
 }
 

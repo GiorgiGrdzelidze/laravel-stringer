@@ -10,13 +10,13 @@ use Stringer\Laravel\Telegram\TelegramClient;
 final class HelpCommand implements Command
 {
     private const MESSAGE = <<<'TEXT'
-ბრძანებები / commands:
+Commands:
 
-/list — ბოლო 10 თემა
-/file — დააფაილე ან გადახედე (free text → ახალი თემა)
-/file {id} — ერთი თემის ფორსირებული გენერაცია
-/spike {id} — თემის უარყოფა
-/help — ეს შეტყობინება
+/list — last 10 topics
+/generate — list pending topics, or pass free text to enqueue a new one
+/generate {id} — force draft generation for topic {id}
+/spike {id} — reject topic {id}
+/help — this message
 TEXT;
 
     public function __construct(

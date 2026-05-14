@@ -22,21 +22,172 @@ final class TelegramClient
     ) {}
 
     /**
+     * @param  'HTML'|'MarkdownV2'|null  $parseMode  Optional Telegram parse mode for rich formatting.
+     * @param  array<string, mixed>|null  $replyMarkup  Optional Telegram reply_markup payload —
+     *                                                  typically the output of
+     *                                                  `ReplyKeyboard::toArray()` for a custom
+     *                                                  keyboard, or `['remove_keyboard' => true]`
+     *                                                  to dismiss an active one.
      * @return array<string, mixed>
      */
-    public function sendMessage(int $chatId, string $text): array
+    public function sendMessage(
+        int $chatId,
+        string $text,
+        ?string $parseMode = null,
+        ?array $replyMarkup = null,
+    ): array {
+        $this->requireBotToken();
+
+        $payload = [
+            'chat_id' => $chatId,
+            'text' => $text,
+        ];
+
+        if ($parseMode !== null) {
+            $payload['parse_mode'] = $parseMode;
+            $payload['disable_web_page_preview'] = true;
+        }
+
+        if ($replyMarkup !== null) {
+            $payload['reply_markup'] = $replyMarkup;
+        }
+
+        $response = Http::asJson()
+            ->post($this->endpoint('sendMessage'), $payload)
+            ->throw();
+
+        /** @var array<string, mixed> */
+        return $response->json() ?? [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $replyMarkup
+     * @return array<string, mixed>
+     */
+    public function sendPhoto(int $chatId, string $photoUrl, ?string $caption = null, ?array $replyMarkup = null): array
+    {
+        $this->requireBotToken();
+
+        $payload = [
+            'chat_id' => $chatId,
+            'photo' => $photoUrl,
+        ];
+
+        if ($caption !== null) {
+            $payload['caption'] = $caption;
+        }
+
+        if ($replyMarkup !== null) {
+            $payload['reply_markup'] = $replyMarkup;
+        }
+
+        $response = Http::asJson()
+            ->post($this->endpoint('sendPhoto'), $payload)
+            ->throw();
+
+        /** @var array<string, mixed> */
+        return $response->json() ?? [];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function sendLocation(int $chatId, float $latitude, float $longitude, ?string $caption = null): array
     {
         $this->requireBotToken();
 
         $response = Http::asJson()
-            ->post($this->endpoint('sendMessage'), [
+            ->post($this->endpoint('sendLocation'), array_filter([
                 'chat_id' => $chatId,
-                'text' => $text,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'horizontal_accuracy' => null,
+            ], static fn (mixed $v): bool => $v !== null))
+            ->throw();
+
+        if ($caption !== null && $caption !== '') {
+            $this->sendMessage($chatId, $caption);
+        }
+
+        /** @var array<string, mixed> */
+        return $response->json() ?? [];
+    }
+
+    /**
+     * @param  list<string>  $photoUrls
+     * @return array<string, mixed>
+     */
+    public function sendMediaGroup(int $chatId, array $photoUrls, ?string $caption = null): array
+    {
+        $this->requireBotToken();
+
+        $media = [];
+        foreach ($photoUrls as $index => $url) {
+            $entry = ['type' => 'photo', 'media' => $url];
+            if ($index === 0 && $caption !== null && $caption !== '') {
+                $entry['caption'] = $caption;
+            }
+            $media[] = $entry;
+        }
+
+        $response = Http::asJson()
+            ->post($this->endpoint('sendMediaGroup'), [
+                'chat_id' => $chatId,
+                'media' => $media,
             ])
             ->throw();
 
         /** @var array<string, mixed> */
         return $response->json() ?? [];
+    }
+
+    /**
+     * Register the bot's command list — what shows up in the blue "menu"
+     * button next to the chat input. One call per language; per-language
+     * descriptions are picked by Telegram based on the user's app locale.
+     *
+     * @param  list<array{command: string, description: string}>  $commands
+     * @return array<string, mixed>
+     */
+    public function setMyCommands(array $commands, ?string $languageCode = null): array
+    {
+        $this->requireBotToken();
+
+        $payload = ['commands' => $commands];
+        if ($languageCode !== null && $languageCode !== '') {
+            $payload['language_code'] = $languageCode;
+        }
+
+        $response = Http::asJson()
+            ->post($this->endpoint('setMyCommands'), $payload)
+            ->throw();
+
+        /** @var array<string, mixed> */
+        return $response->json() ?? [];
+    }
+
+    /**
+     * Best-effort message deletion. Returns true on success, false on any
+     * Telegram error (e.g. bot lacks "Delete messages" admin permission in
+     * the chat, message too old, etc.).
+     */
+    public function deleteMessage(int $chatId, int $messageId): bool
+    {
+        if ($this->botToken === '') {
+            return false;
+        }
+
+        try {
+            $response = Http::asJson()
+                ->post($this->endpoint('deleteMessage'), [
+                    'chat_id' => $chatId,
+                    'message_id' => $messageId,
+                ]);
+
+            return $response->successful();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

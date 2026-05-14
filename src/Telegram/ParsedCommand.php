@@ -21,6 +21,7 @@ final readonly class ParsedCommand
         public ?string $command,
         public string $text,
         public int $chatId,
+        public ?int $messageId = null,
     ) {}
 
     public function isCommand(): bool

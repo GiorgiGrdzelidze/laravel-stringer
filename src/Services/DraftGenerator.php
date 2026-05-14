@@ -50,6 +50,7 @@ final class DraftGenerator
         private readonly ContentTarget $target,
         private readonly TopicQueue $topicQueue,
         private readonly ConfigRepository $config,
+        private readonly AiTellSanitizer $sanitizer,
     ) {}
 
     public function generate(BlogTopic $topic): Model
@@ -150,19 +151,51 @@ final class DraftGenerator
             }
 
             $value = $primary[$field->name];
+
+            // LLMs occasionally return all locales in one shot, keyed by
+            // locale code. Honor that shape directly and skip the per-locale
+            // translation calls — saves N-1 round-trips per translatable
+            // field. Backfill any missing locales with the primary value.
+            if (is_array($value)) {
+                $perLocale = [];
+                $primaryValue = null;
+                foreach ($locales as $locale) {
+                    $localized = $value[$locale] ?? null;
+                    if (is_string($localized) && $localized !== '') {
+                        $perLocale[$locale] = $this->sanitizer->sanitize($localized);
+                        if ($locale === $primaryLocale) {
+                            $primaryValue = $perLocale[$locale];
+                        }
+                    }
+                }
+
+                if ($primaryValue === null) {
+                    throw new RuntimeException("Translatable field '{$field->name}' is missing the primary locale '{$primaryLocale}'.");
+                }
+
+                foreach ($locales as $locale) {
+                    $perLocale[$locale] ??= $primaryValue;
+                }
+
+                $out[$field->name] = $perLocale;
+
+                continue;
+            }
+
             if (! is_string($value)) {
                 throw new RuntimeException("Translatable field '{$field->name}' is not a string in the LLM response.");
             }
 
-            $perLocale = [$primaryLocale => $value];
+            $sanitizedPrimary = $this->sanitizer->sanitize($value);
+            $perLocale = [$primaryLocale => $sanitizedPrimary];
 
             foreach ($locales as $locale) {
                 if ($locale === $primaryLocale) {
                     continue;
                 }
 
-                $prompt = $this->promptBuilder->buildTranslationPrompt($value, $locale);
-                $perLocale[$locale] = $llm->translate($prompt, $primaryLocale, $locale);
+                $prompt = $this->promptBuilder->buildTranslationPrompt($sanitizedPrimary, $locale);
+                $perLocale[$locale] = $this->sanitizer->sanitize($llm->translate($prompt, $primaryLocale, $locale));
             }
 
             $out[$field->name] = $perLocale;

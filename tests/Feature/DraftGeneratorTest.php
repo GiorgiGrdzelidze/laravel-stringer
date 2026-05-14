@@ -11,6 +11,7 @@ use Stringer\Laravel\Enums\TopicSource;
 use Stringer\Laravel\Enums\TopicStatus;
 use Stringer\Laravel\Llm\LlmManager;
 use Stringer\Laravel\Models\StringerPrompt;
+use Stringer\Laravel\Services\AiTellSanitizer;
 use Stringer\Laravel\Services\DraftGenerator;
 use Stringer\Laravel\Services\TopicQueue;
 use Stringer\Laravel\Tests\Doubles\CapturingContentTarget;
@@ -58,6 +59,7 @@ function makeGenerator(ScriptedLlmClient $llm, ?array $contextOverride = null): 
         $target,
         $topicQueue,
         $config,
+        new AiTellSanitizer,
     );
 
     return [$manager, $topicQueue, $generator, $target, $llm];
@@ -197,8 +199,10 @@ it('skips translation entirely when only the primary locale is configured', func
 
     $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
 
+    // Sanitizer capitalises the first letter after sentence boundaries; a
+    // single-letter fixture like 't' becomes 'T'.
     expect($client->translateCalls)->toBe([])
-        ->and($target->capturedDraft?->field('title'))->toBe(['en' => 't']);
+        ->and($target->capturedDraft?->field('title'))->toBe(['en' => 'T']);
 });
 
 it('passes the PromptBuilder output to LlmClient::translate verbatim (no double wrapping)', function () {
@@ -240,5 +244,6 @@ it('strips code fences around the LLM JSON response', function () {
 
     $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
 
-    expect($target->capturedDraft?->field('title'))->toBe(['en' => 'T', 'ka' => 'tr', 'ru' => 'tr']);
+    // Sanitizer capitalises the first letter after sentence boundaries — 'tr' → 'Tr'.
+    expect($target->capturedDraft?->field('title'))->toBe(['en' => 'T', 'ka' => 'Tr', 'ru' => 'Tr']);
 });

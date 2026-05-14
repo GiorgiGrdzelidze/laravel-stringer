@@ -65,7 +65,7 @@ it('returns 200 ok for an allowlisted /help command and replies via Telegram', f
     Http::assertSent(function (Request $request) {
         return str_contains($request->url(), 'api.telegram.org/bottest-bot-token/sendMessage')
             && $request['chat_id'] === ALLOWED_CHAT
-            && str_contains((string) $request['text'], 'ბრძანებები');
+            && str_contains((string) $request['text'], 'Commands:');
     });
 });
 
@@ -83,21 +83,21 @@ it('enqueues a Manual topic for non-command free text and replies with the new i
     Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], "#{$topic->id}"));
 });
 
-it('replies with pending topics for /file with no argument', function () {
+it('replies with pending topics for /generate with no argument', function () {
     (new TopicQueue)->enqueue('first', TopicSource::Manual);
     (new TopicQueue)->enqueue('second', TopicSource::Manual);
 
-    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/file'))->assertOk();
+    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/generate'))->assertOk();
 
     Http::assertSent(function (Request $r) {
         $text = (string) $r['text'];
 
-        return str_contains($text, 'მოლოდინში') && str_contains($text, 'first') && str_contains($text, 'second');
+        return str_contains($text, 'Pending:') && str_contains($text, 'first') && str_contains($text, 'second');
     });
 });
 
-it('enqueues a Manual topic when /file is given free-text', function () {
-    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/file write about laravel queues'))
+it('enqueues a Manual topic when /generate is given free-text', function () {
+    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/generate write about laravel queues'))
         ->assertOk();
 
     $topic = BlogTopic::query()->first();
@@ -105,24 +105,24 @@ it('enqueues a Manual topic when /file is given free-text', function () {
         ->and($topic?->source)->toBe(TopicSource::Manual);
 });
 
-it('dispatches GenerateDraftJob when /file is given a numeric topic id', function () {
+it('dispatches GenerateDraftJob when /generate is given a numeric topic id', function () {
     Bus::fake();
 
     $topic = (new TopicQueue)->enqueue('existing', TopicSource::Manual);
 
-    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload("/file {$topic->id}"))
+    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload("/generate {$topic->id}"))
         ->assertOk();
 
     Bus::assertDispatched(GenerateDraftJob::class, fn (GenerateDraftJob $job) => $job->topicId === $topic->id);
 });
 
-it('replies "not found" when /file is given an unknown id', function () {
+it('replies "not found" when /generate is given an unknown id', function () {
     Bus::fake();
 
-    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/file 999'))->assertOk();
+    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/generate 999'))->assertOk();
 
     Bus::assertNotDispatched(GenerateDraftJob::class);
-    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'ვერ მოიძებნა'));
+    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'not found'));
 });
 
 it('marks the topic Rejected on /spike {id}', function () {
@@ -132,13 +132,13 @@ it('marks the topic Rejected on /spike {id}', function () {
 
     expect($topic->fresh()->status)->toBe(TopicStatus::Rejected);
 
-    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'უარყოფილია'));
+    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'rejected'));
 });
 
 it('shows usage hint when /spike is missing an id', function () {
     $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/spike'))->assertOk();
 
-    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'გამოყენება: /spike'));
+    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'Usage: /spike'));
 });
 
 it('lists topics on /list', function () {
@@ -150,17 +150,17 @@ it('lists topics on /list', function () {
     Http::assertSent(function (Request $r) {
         $text = (string) $r['text'];
 
-        return str_contains($text, 'ბოლო თემები') && str_contains($text, 'alpha') && str_contains($text, 'beta');
+        return str_contains($text, 'Recent topics:') && str_contains($text, 'alpha') && str_contains($text, 'beta');
     });
 });
 
 it('replies "queue empty" on /list when no topics exist', function () {
     $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/list'))->assertOk();
 
-    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'რიგი ცარიელია'));
+    Http::assertSent(fn (Request $r) => str_contains((string) $r['text'], 'No topics yet'));
 });
 
-it('treats /draft as an alias for /file', function () {
+it('treats /draft as an alias for /generate', function () {
     $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/draft write about queues'))
         ->assertOk();
 

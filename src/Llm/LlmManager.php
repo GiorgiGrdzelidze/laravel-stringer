@@ -33,12 +33,13 @@ class LlmManager
         $driver = (string) $this->config->get('stringer.llm.driver', '');
         $apiKey = (string) $this->config->get("stringer.llm.api_keys.{$driver}", '');
         $model = $this->modelName();
+        $timeout = (int) $this->config->get('stringer.llm.http_timeout', 120);
 
         return match ($driver) {
-            'gemini' => new GeminiClient($apiKey, $model),
-            'claude' => new ClaudeClient($apiKey, $model),
-            'openai' => new OpenAiClient($apiKey, $model),
-            'groq' => new GroqClient($apiKey, $model),
+            'gemini' => new GeminiClient($apiKey, $model, $timeout),
+            'claude' => new ClaudeClient($apiKey, $model, $timeout),
+            'openai' => new OpenAiClient($apiKey, $model, $timeout),
+            'groq' => new GroqClient($apiKey, $model, $timeout),
             default => throw new InvalidArgumentException(
                 "Unknown LLM driver '{$driver}'. Supported: gemini, claude, openai, groq."
             ),

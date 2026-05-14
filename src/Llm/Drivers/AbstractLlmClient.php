@@ -27,6 +27,7 @@ abstract class AbstractLlmClient implements LlmClient
     public function __construct(
         protected readonly string $apiKey,
         protected readonly string $model,
+        protected readonly int $timeoutSeconds = 120,
     ) {}
 
     public function draft(string $prompt, array $context): string

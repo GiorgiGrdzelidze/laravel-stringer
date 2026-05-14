@@ -26,12 +26,12 @@ final class ListCommand implements Command
             ->get();
 
         if ($topics->isEmpty()) {
-            $this->telegram->sendMessage($command->chatId, 'რიგი ცარიელია.');
+            $this->telegram->sendMessage($command->chatId, 'No topics yet.');
 
             return;
         }
 
-        $lines = ['ბოლო თემები:'];
+        $lines = ['Recent topics:'];
         foreach ($topics as $topic) {
             $hint = mb_strimwidth($topic->hint, 0, self::HINT_TRUNCATE, '…');
             $lines[] = sprintf('#%d [%s] %s', $topic->id, $topic->status->value, $hint);
