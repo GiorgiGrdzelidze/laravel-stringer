@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stringer\Laravel;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
@@ -14,6 +15,7 @@ use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder;
 use Stringer\Laravel\Http\Controllers\TelegramWebhookController;
 use Stringer\Laravel\Http\Middleware\VerifyTelegramSecret;
+use Stringer\Laravel\Jobs\AutoGenerateWeeklyJob;
 use Stringer\Laravel\Llm\LlmManager;
 use Stringer\Laravel\Prompts\DbPromptBuilder;
 use Stringer\Laravel\Services\TopicQueue;
@@ -47,6 +49,7 @@ final class StringerServiceProvider extends ServiceProvider
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'stringer');
 
         $this->registerTelegramWebhookRoute();
+        $this->registerScheduledJobs();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -63,6 +66,25 @@ final class StringerServiceProvider extends ServiceProvider
 
             $this->autoSeedDefaults();
         }
+    }
+
+    /**
+     * Schedule the weekly auto-generate job. Cron + timezone come from
+     * config (env-overridable). The callAfterResolving hook waits until
+     * the Schedule singleton is built, which happens lazily in console
+     * mode — so this is a no-op for HTTP requests.
+     */
+    private function registerScheduledJobs(): void
+    {
+        $this->app->afterResolving(Schedule::class, function (Schedule $schedule): void {
+            $cron = (string) config('stringer.schedule.auto_generate_cron', '0 9 * * 1');
+            $timezone = (string) config('stringer.schedule.auto_generate_timezone', 'Asia/Tbilisi');
+
+            $schedule->job(new AutoGenerateWeeklyJob)
+                ->cron($cron)
+                ->timezone($timezone)
+                ->name('stringer.auto_generate_weekly');
+        });
     }
 
     private function registerTelegramWebhookRoute(): void
