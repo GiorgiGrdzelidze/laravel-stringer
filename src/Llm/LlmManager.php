@@ -22,7 +22,7 @@ use Stringer\Laravel\Llm\Drivers\OpenAiClient;
  * swaps take effect on the next resolve — useful for tests and for
  * long-running workers that switch drivers via a control plane.
  */
-final class LlmManager
+class LlmManager
 {
     public function __construct(
         private readonly ConfigRepository $config,

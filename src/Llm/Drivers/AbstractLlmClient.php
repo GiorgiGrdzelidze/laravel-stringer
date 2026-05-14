@@ -10,9 +10,17 @@ use Stringer\Laravel\Contracts\LlmClient;
 /**
  * Shared scaffolding for the four built-in LLM drivers.
  *
- * Subclasses implement `request()`, which sends one user message to the
- * provider and returns the assistant's plain-text reply. `draft()` and
- * `translate()` build the user message and delegate.
+ * `draft()` and `translate()` are thin pass-throughs to `request()`: the
+ * argument they receive IS the final prompt string, produced by the
+ * `PromptBuilder` upstream in the pipeline. The two methods stay distinct
+ * on the interface so future driver implementations can route them to
+ * different model overrides (heavier model for `draft`, lighter for
+ * `translate` — deferred to v0.2 per spec §5.3); v0.1.0 treats both as
+ * single-message completion calls.
+ *
+ * The `$context` parameter on `draft()` and the `$fromLocale` /
+ * `$toLocale` parameters on `translate()` are honored at the
+ * `PromptBuilder` layer; drivers ignore them.
  */
 abstract class AbstractLlmClient implements LlmClient
 {
@@ -21,32 +29,14 @@ abstract class AbstractLlmClient implements LlmClient
         protected readonly string $model,
     ) {}
 
-    /**
-     * @param  array<string, list<array{title: string, excerpt: string}>>  $context
-     */
     public function draft(string $prompt, array $context): string
     {
-        $serialized = json_encode($context, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-
-        if ($serialized === false) {
-            throw new RuntimeException('Could not serialize draft context for the LLM.');
-        }
-
-        $message = $prompt
-            ."\n\n## Reference context — recent published posts\n\n"
-            .$serialized;
-
-        return $this->request($message);
+        return $this->request($prompt);
     }
 
     public function translate(string $text, string $fromLocale, string $toLocale): string
     {
-        $message = "Translate the following text from {$fromLocale} to {$toLocale}. "
-            .'Preserve markdown structure, code blocks, and proper nouns. '
-            ."Output only the translation — no preamble, no quoting.\n\n"
-            .$text;
-
-        return $this->request($message);
+        return $this->request($text);
     }
 
     /**

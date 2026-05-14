@@ -8,9 +8,11 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Stringer\Laravel\Contracts\LlmClient;
+use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder;
 use Stringer\Laravel\Llm\LlmManager;
+use Stringer\Laravel\Prompts\DbPromptBuilder;
 use Stringer\Laravel\Services\TopicQueue;
 use Throwable;
 
@@ -27,6 +29,8 @@ final class StringerServiceProvider extends ServiceProvider
         $this->app->bind(LlmClient::class, fn (Application $app): LlmClient => $app->make(LlmManager::class)->make());
 
         $this->app->singleton(TopicQueue::class);
+
+        $this->app->bind(PromptBuilder::class, DbPromptBuilder::class);
     }
 
     public function boot(): void
