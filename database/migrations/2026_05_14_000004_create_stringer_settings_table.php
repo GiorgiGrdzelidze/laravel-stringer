@@ -23,10 +23,10 @@ return new class extends Migration
         Schema::create($table, function (Blueprint $table) {
             $table->id();
             $table->text('voice_card')->nullable();
-            $table->unsignedInteger('body_word_cap')->nullable();
-            $table->unsignedInteger('tag_count')->nullable();
-            $table->string('auto_generate_cron')->nullable();
-            $table->string('auto_generate_timezone')->nullable();
+            $table->unsignedInteger('body_word_cap')->default(800);
+            $table->unsignedInteger('tag_count')->default(5);
+            $table->string('auto_generate_cron')->default('0 9 * * 1');
+            $table->string('auto_generate_timezone')->default('Asia/Tbilisi');
             $table->json('allowed_chat_ids')->nullable();
             $table->timestamps();
         });
