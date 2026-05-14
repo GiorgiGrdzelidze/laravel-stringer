@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stringer\Laravel\Llm;
 
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use InvalidArgumentException;
 use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Llm\Drivers\ClaudeClient;
@@ -16,23 +17,22 @@ use Stringer\Laravel\Llm\Drivers\OpenAiClient;
  *
  * Driver name comes from `config('stringer.llm.driver')`; the matching
  * API key and model id come from `config('stringer.llm.api_keys.*')`
- * and `config('stringer.llm.models.*')`.
- *
- * Bound as a singleton; `make()` returns a fresh driver instance each
- * time so a host can swap drivers at runtime by re-resolving.
+ * and `config('stringer.llm.models.*')`. Config is read inside `make()`
+ * (not snapshotted at construction) so runtime `config()->set(...)`
+ * swaps take effect on the next resolve — useful for tests and for
+ * long-running workers that switch drivers via a control plane.
  */
 final class LlmManager
 {
     public function __construct(
-        /** @var array{driver: string, api_keys: array<string, ?string>, models: array<string, string>} */
-        private readonly array $config,
+        private readonly ConfigRepository $config,
     ) {}
 
     public function make(): LlmClient
     {
-        $driver = $this->config['driver'] ?? '';
-        $apiKey = (string) ($this->config['api_keys'][$driver] ?? '');
-        $model = (string) ($this->config['models'][$driver] ?? '');
+        $driver = (string) $this->config->get('stringer.llm.driver', '');
+        $apiKey = (string) $this->config->get("stringer.llm.api_keys.{$driver}", '');
+        $model = (string) $this->config->get("stringer.llm.models.{$driver}", '');
 
         return match ($driver) {
             'gemini' => new GeminiClient($apiKey, $model),

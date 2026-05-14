@@ -16,10 +16,7 @@ final class StringerServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/stringer.php', 'stringer');
 
         $this->app->singleton(LlmManager::class, function (Application $app): LlmManager {
-            /** @var array{driver: string, api_keys: array<string, ?string>, models: array<string, string>} $config */
-            $config = $app['config']->get('stringer.llm', []);
-
-            return new LlmManager($config);
+            return new LlmManager($app['config']);
         });
 
         $this->app->bind(LlmClient::class, fn (Application $app): LlmClient => $app->make(LlmManager::class)->make());
