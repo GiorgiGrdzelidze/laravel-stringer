@@ -73,6 +73,7 @@ return [
         'blog_topics' => 'blog_topics',
         'stringer_prompts' => 'stringer_prompts',
         'stringer_content_fields' => 'stringer_content_fields',
+        'stringer_settings' => 'stringer_settings',
         'articles' => env('STRINGER_ARTICLES_TABLE', 'articles'),
     ],
 

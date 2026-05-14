@@ -44,6 +44,7 @@ final class StringerServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'stringer');
 
         $this->registerTelegramWebhookRoute();
 
@@ -55,6 +56,10 @@ final class StringerServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../database/migrations' => database_path('migrations'),
             ], 'stringer-migrations');
+
+            $this->publishes([
+                __DIR__.'/../resources/views' => resource_path('views/vendor/stringer'),
+            ], 'stringer-views');
 
             $this->autoSeedDefaults();
         }
