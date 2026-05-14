@@ -1,5 +1,7 @@
 includes:
     - vendor/larastan/larastan/extension.neon
+    - vendor/pestphp/pest/extension.neon
+    - vendor/pestphp/pest/phpstan-pest-extension.neon
 
 parameters:
     level: 6
@@ -10,3 +12,15 @@ parameters:
     treatPhpDocTypesAsCertain: false
     parallel:
         maximumNumberOfProcesses: 1
+    ignoreErrors:
+        # Pest rebinds $this inside it() closures to the bound TestCase
+        # (set via uses(TestCase::class) in tests/Pest.php), but PHPStan
+        # only sees the surrounding TestCall context and can't follow the
+        # rebinding. Calls to Laravel's MakesHttpRequests methods are
+        # legitimate at runtime; static analysis just doesn't reach them
+        # without a third-party Pest-binding extension that doesn't exist
+        # for PHPStan 2.x as of 2026-05-14. Allowed surface is narrow:
+        # only the Telegram webhook test exercises HTTP.
+        -
+            message: '#Call to an undefined method Pest\\PendingCalls\\TestCall(\|[^:]+)?::postJson\(\)#'
+            path: tests/Feature/TelegramWebhookTest.php

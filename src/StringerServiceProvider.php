@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace Stringer\Laravel;
 
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder;
+use Stringer\Laravel\Http\Controllers\TelegramWebhookController;
+use Stringer\Laravel\Http\Middleware\VerifyTelegramSecret;
 use Stringer\Laravel\Llm\LlmManager;
 use Stringer\Laravel\Prompts\DbPromptBuilder;
 use Stringer\Laravel\Services\TopicQueue;
+use Stringer\Laravel\Telegram\TelegramClient;
 use Throwable;
 
 final class StringerServiceProvider extends ServiceProvider
@@ -31,11 +35,17 @@ final class StringerServiceProvider extends ServiceProvider
         $this->app->singleton(TopicQueue::class);
 
         $this->app->bind(PromptBuilder::class, DbPromptBuilder::class);
+
+        $this->app->singleton(TelegramClient::class, function (): TelegramClient {
+            return new TelegramClient((string) config('stringer.telegram.bot_token', ''));
+        });
     }
 
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        $this->registerTelegramWebhookRoute();
 
         if ($this->app->runningInConsole()) {
             $this->publishes([
@@ -48,6 +58,18 @@ final class StringerServiceProvider extends ServiceProvider
 
             $this->autoSeedDefaults();
         }
+    }
+
+    private function registerTelegramWebhookRoute(): void
+    {
+        if (! (bool) config('stringer.telegram.enabled', true)) {
+            return;
+        }
+
+        Route::post('webhooks/telegram/{secret}', TelegramWebhookController::class)
+            ->where('secret', '[A-Za-z0-9_-]{16,}')
+            ->middleware(VerifyTelegramSecret::class)
+            ->name('stringer.telegram.webhook');
     }
 
     /**
