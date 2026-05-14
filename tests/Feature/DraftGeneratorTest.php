@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\DataObjects\LocalizedDraft;
@@ -15,6 +14,7 @@ use Stringer\Laravel\Models\StringerPrompt;
 use Stringer\Laravel\Services\DraftGenerator;
 use Stringer\Laravel\Services\TopicQueue;
 use Stringer\Laravel\Tests\Doubles\CapturingContentTarget;
+use Stringer\Laravel\Tests\Doubles\ManagerStub;
 use Stringer\Laravel\Tests\Doubles\ScriptedLlmClient;
 use Stringer\Laravel\Tests\Doubles\StaticContextBuilder;
 
@@ -61,31 +61,6 @@ function makeGenerator(ScriptedLlmClient $llm, ?array $contextOverride = null): 
     );
 
     return [$manager, $topicQueue, $generator, $target, $llm];
-}
-
-/**
- * Test override of LlmManager that returns a scripted client and a fixed
- * model identifier — keeps DraftGenerator's `modelName()` round-trip
- * deterministic without touching real config.
- */
-final class ManagerStub extends LlmManager
-{
-    public function __construct(
-        private readonly LlmClient $client,
-        private readonly string $modelName,
-    ) {
-        parent::__construct(app('config'));
-    }
-
-    public function make(): LlmClient
-    {
-        return $this->client;
-    }
-
-    public function modelName(): string
-    {
-        return $this->modelName;
-    }
 }
 
 it('makes one draft call + one translate call per non-primary locale per translatable field', function () {
