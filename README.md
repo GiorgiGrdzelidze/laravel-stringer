@@ -1,26 +1,161 @@
-# laravel-stringer
+# 🧵 laravel-stringer
 
-Telegram-driven LLM blog drafter for Laravel. Pairs a Telegram bot with an LLM pipeline to produce **per-locale drafts** for human review. Never auto-publishes implicitly — auto-publish is an explicit per-topic opt-in.
+> A Telegram-driven LLM blog drafter for Laravel — pairs a chat-first interface with a configurable AI pipeline to produce **per-locale drafts** for human review. Never auto-publishes implicitly. Every part of the pipeline — prompts, field schema, voice card — is editable in Filament without a deploy.
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![PHP](https://img.shields.io/badge/php-%5E8.3-777BB4.svg)](https://www.php.net)
+[![Laravel](https://img.shields.io/badge/laravel-%5E12.0%20%7C%7C%20%5E13.0-FF2D20.svg)](https://laravel.com)
+[![Pest](https://img.shields.io/badge/tests-pest%204-F86E58.svg)](https://pestphp.com)
+[![PHPStan](https://img.shields.io/badge/phpstan-level%206-blueviolet.svg)](https://phpstan.org)
+
+![Stringer Topics admin](docs/screenshots/topics-list.png)
 
 ---
 
-## What it does
+## ⚡ Quickstart (5 minutes)
+
+Get from zero to your first draft in five steps:
+
+```bash
+# 1. Install
+composer require giorgigrdzelidze/laravel-stringer
+php artisan migrate
+php artisan db:seed --class="Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder"
+php artisan db:seed --class="Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder"
+```
+
+```env
+# 2. Add to .env — pick any one LLM provider
+STRINGER_LLM_DRIVER=gemini
+STRINGER_GEMINI_API_KEY=AIzaSy...
+GEMINI_MODEL=gemini-flash-latest
+STRINGER_LLM_HTTP_TIMEOUT=120
+```
+
+```php
+// 3. Bind two adapters in any service provider
+$this->app->bind(\Stringer\Laravel\Contracts\ContentTarget::class, ArticleTarget::class);
+$this->app->bind(\Stringer\Laravel\Contracts\ContextBuilder::class, PublicContextBuilder::class);
+```
+
+```php
+// 4. Register the Filament plugin
+->plugin(\Stringer\Laravel\Filament\StringerPlugin::make())
+```
+
+```bash
+# 5. Trigger your first draft
+php artisan queue:work &
+php artisan tinker --execute="\$t = app(Stringer\Laravel\Services\TopicQueue::class)->enqueue('write about laravel queue retries', Stringer\Laravel\Enums\TopicSource::Manual); Stringer\Laravel\Jobs\GenerateDraftJob::dispatch(\$t->id);"
+```
+
+Open `/admin/blog-topic-resource/blog-topics` — your topic flips from `Queued` → `Drafting` → `Drafted` and a new article appears at `/admin/articles` ready for review.
+
+> 💬 Want the chat-first experience? Add `STRINGER_TELEGRAM_BOT_TOKEN` + `STRINGER_TELEGRAM_WEBHOOK_SECRET`, set your bot's webhook to `/webhooks/telegram/{secret}`, and message `/generate <topic>`.
+
+---
+
+## ✨ What it does
 
 `stringer` is a small back office for blog content:
 
-1. The operator (or an automated scheduler) creates a **topic** — a hint, a tag, a stray idea.
-2. A queued job composes an LLM prompt from a configurable **field schema** (`StringerContentField`) and a configurable **prompt template** (`StringerPrompt`), both editable in Filament without a deploy.
-3. The LLM returns a JSON object keyed by field name; non-translatable fields are kept as-is, `TranslatableString` / `TranslatableMarkdown` fields are translated per locale via a second LLM call each.
-4. The package hands a `LocalizedDraft` to the host's `ContentTarget` adapter. The host writes the draft to its content model (`status='draft'`, `publish_at=null`) so a human can review it before it goes live.
-5. When the operator trusts the pipeline for a specific recurring topic, they flip `auto_publish` + `target_status` on that topic and the host adapter publishes it directly on the next generate.
-
-The Telegram bot is the day-to-day interface: `/file write about laravel queues` enqueues a topic, `/list` shows recent topics, `/file 42` force-generates a draft for topic #42, `/spike 42` rejects.
+1. 📥 An operator (or scheduler) creates a **topic** — a hint, a tag, a stray idea.
+2. 🛠️ A queued job composes an LLM prompt from a configurable **field schema** (`StringerContentField`) and a configurable **prompt template** (`StringerPrompt`), both editable in Filament.
+3. 🤖 The LLM returns a JSON object keyed by field name. Translatable fields come back per-locale; non-translatable values pass through as-is.
+4. 🧹 A deterministic **AI-tell sanitizer** strips giveaway phrases ("furthermore", "in conclusion", "it's worth noting") before the draft is written.
+5. 📝 The package hands a `LocalizedDraft` to the host's `ContentTarget` adapter, which writes the draft as `status='draft'` for human review.
+6. 🚀 When the operator trusts the pipeline for a recurring topic, flipping `auto_publish` + `target_status` on the topic publishes it directly on the next generate.
 
 ---
 
-## Install
+## 🖼️ See it in action
+
+| Filament — Topics queue | Filament — Settings page |
+|:---:|:---:|
+| ![Topics](docs/screenshots/topics-list.png) | ![Settings](docs/screenshots/settings.png) |
+| Inspect status, click *Generate Now*, or spike rejected hints | Voice card, cron, allowed chat IDs — all editable, no deploy |
+
+| Filament — Content Fields | Telegram flow |
+|:---:|:---:|
+| ![Content Fields](docs/screenshots/content-fields.png) | ![Telegram](docs/screenshots/telegram-flow.png) |
+| Add a field → LLM is asked for it on the next draft | `/generate` → ack → success notification with the edit URL |
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+  TG[Telegram chat] --> WH["/webhooks/telegram/{secret}"]
+  WH --> Disp[CommandDispatcher]
+  Disp --> Cmd[FileCommand / SpikeCommand / ListCommand]
+  Cmd --> Q[Services TopicQueue]
+  Q --> BT[(blog_topics)]
+  BT --> Job[GenerateDraftJob]
+  Job --> Gen[DraftGenerator]
+  Gen --> PB[PromptBuilder]
+  Gen --> Ctx[ContextBuilder host adapter]
+  Gen --> Llm[LlmManager → Gemini / Claude / OpenAI / Groq]
+  Llm --> San[AiTellSanitizer]
+  San --> Tgt[ContentTarget host adapter]
+  Tgt --> Art[(articles)]
+  Job -. notifies .-> TG
+```
+
+Every arrow is mockable in tests. Every box marked "host adapter" is something the host implements; everything else ships in the package.
+
+---
+
+## 🎯 Quality defaults
+
+The seeded defaults are built around **what experienced engineers actually want to read**:
+
+| Surface | Default |
+|---------|---------|
+| **Draft prompt** | 4 kB template with explicit voice rules, an anti-AI-tell phrase list, code-must-compile rule, heading conventions, and a worked few-shot example output |
+| **Translate prompt** | Preserves code, function names, library names, brand names, CLI flags, file paths, and HTML/JSON keys verbatim |
+| **Voice card** | Senior-engineer voice — first-person where the topic is experience, third-person where it's reference. Plainspoken, opinionated, no marketing language |
+| **Title field** | Max 70 chars, sentence-case English, anti-clickbait, anti-"Ultimate / Complete / Definitive" word list |
+| **Excerpt field** | Max 200 chars, ~25-35 words, active voice, stands alone as meta description |
+| **Body field** | Max 1500 words, opens with a concrete scenario (never a definition), H2/H3 only, working code samples required |
+| **Tags field** | Multilingual — LLM returns `{"en":[...], "ka":[...], "ru":[...]}` with parallel index ordering. Tech / brand names not translated |
+| **Post-processing** | `AiTellSanitizer` strips ~30 giveaway phrases (`Furthermore,`, `Moreover,`, `In conclusion,`, `It's worth noting,`, `In today's fast-paced world,`, …) — case-insensitive, code-block-safe |
+
+Every default is editable in Filament. Hosts that want a different voice, longer bodies, or different fields just change the rows — no deploy required.
+
+---
+
+## 📝 Sample output
+
+Real output from the default prompt on `gemini-flash-latest`, hint *"Idempotent queue jobs in Laravel: deduplication strategies, distributed locks via Redis, handling out-of-order delivery, and observability hooks."*
+
+<details>
+<summary>Show generated draft</summary>
+
+**Title** *(EN)*
+> Building Idempotent Queue Jobs in Laravel: Strategies and Implementation
+
+**Excerpt** *(EN)*
+> Ensuring consistency in Laravel background tasks through deduplication, Redis distributed locks, and handling out-of-order execution.
+
+**Meta title** *(EN)*
+> Implementing Idempotent Queue Jobs in Laravel
+
+**Meta description** *(EN)*
+> Technical guide on building idempotent Laravel queue jobs using Redis locks, deduplication, and out-of-order execution handling.
+
+**Body** *(EN, first paragraph)*
+> In distributed systems, queue jobs may be executed more than once due to network timeouts, worker crashes, or manual retries. Idempotency ensures that performing an operation multiple times produces the same result as a single execution. This is critical when handling financial transactions, such as those integrated via the `laravel-bog-sdk` or `laravel-rsge` packages.
+
+**Tags**
+> `laravel`, `backend-development`, `queue`, `idempotency`, `redis`
+
+Generated in ~24 seconds end-to-end (one LLM call for the EN draft + all locales). All seven seeded SEO fields were populated in the same call; per-locale translations for EN/KA/RU came back in the same response.
+</details>
+
+---
+
+## 📦 Install
 
 ```bash
 composer require giorgigrdzelidze/laravel-stringer
@@ -30,39 +165,42 @@ php artisan migrate
 The package registers its own service provider via `extra.laravel.providers`. After migrate:
 
 ```bash
-php artisan db:seed --class=Stringer\\Laravel\\Database\\Seeders\\StringerDefaultPromptsSeeder
-php artisan db:seed --class=Stringer\\Laravel\\Database\\Seeders\\StringerDefaultContentFieldsSeeder
+php artisan db:seed --class="Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder"
+php artisan db:seed --class="Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder"
 ```
 
-(The seeders are also auto-run on the first console boot if their tables are empty — the explicit `db:seed` is for forced re-seeds.)
+The seeders are auto-run on the first console boot if their tables are empty; the explicit `db:seed` is for forced re-seeds.
 
 ---
 
-## Configure
+## ⚙️ Configuration
 
 ### Environment variables
 
-| Variable | Default | What it does |
-|----------|---------|--------------|
-| `STRINGER_LLM_DRIVER` | `gemini` | LLM driver. One of: `gemini`, `claude`, `openai`, `groq`. |
-| `STRINGER_GEMINI_API_KEY` | — | Required when driver is `gemini`. |
-| `STRINGER_CLAUDE_API_KEY` | — | Required when driver is `claude`. |
-| `STRINGER_OPENAI_API_KEY` | — | Required when driver is `openai`. |
-| `STRINGER_GROQ_API_KEY` | — | Required when driver is `groq`. |
-| `GEMINI_MODEL` | `gemini-2.0-flash` | Per-driver model identifier. |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `STRINGER_LLM_DRIVER` | `gemini` | LLM driver: `gemini`, `claude`, `openai`, or `groq` |
+| `STRINGER_GEMINI_API_KEY` | — | API key when driver is `gemini` |
+| `STRINGER_CLAUDE_API_KEY` | — | API key when driver is `claude` |
+| `STRINGER_OPENAI_API_KEY` | — | API key when driver is `openai` |
+| `STRINGER_GROQ_API_KEY` | — | API key when driver is `groq` |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Per-driver model identifier |
 | `CLAUDE_MODEL` | `claude-sonnet-4-5` | |
 | `OPENAI_MODEL` | `gpt-4o-mini` | |
 | `GROQ_MODEL` | `llama-3.3-70b-versatile` | |
-| `STRINGER_TELEGRAM_ENABLED` | `true` | Skips the webhook route registration when false. |
-| `STRINGER_TELEGRAM_BOT_TOKEN` | — | Bot token from BotFather. |
-| `STRINGER_TELEGRAM_WEBHOOK_SECRET` | — | 16+ alphanumeric (`[A-Za-z0-9_-]{16,}`) used as the URL secret on `/webhooks/telegram/{secret}`. |
-| `STRINGER_TELEGRAM_ALLOWED_CHAT_IDS` | — | Comma-separated chat ids allowed to drive the bot. Non-allowlisted chats get a `200 OK` with empty body. |
-| `STRINGER_AUTO_GENERATE_CRON` | `0 9 * * 1` | When the weekly auto-generate job fires. |
-| `STRINGER_AUTO_GENERATE_TZ` | `Asia/Tbilisi` | Timezone for the cron above. |
-| `STRINGER_ARTICLE_MODEL` | — | FQN of the host's article model — required only if you use `BlogTopic::article()`. |
-| `STRINGER_SEED_DEFAULTS_ON_BOOT` | `true` | Auto-run seeders if tables are empty. Set false in containers that boot many short-lived consoles. |
+| `STRINGER_LLM_HTTP_TIMEOUT` | `120` | HTTP timeout (seconds) for a single LLM round-trip. Bump if you see cURL error 28 on dense prompts |
+| `STRINGER_TELEGRAM_ENABLED` | `true` | Skips webhook route registration when `false` |
+| `STRINGER_TELEGRAM_BOT_TOKEN` | — | Bot token from BotFather |
+| `STRINGER_TELEGRAM_WEBHOOK_SECRET` | — | 16+ alphanumeric chars (`[A-Za-z0-9_-]{16,}`) used as the URL secret on `/webhooks/telegram/{secret}` |
+| `STRINGER_TELEGRAM_ALLOWED_CHAT_IDS` | — | Comma-separated chat IDs allowed to drive the bot. Non-allowlisted chats get `200 OK` with empty body |
+| `STRINGER_AUTO_GENERATE_CRON` | `0 9 * * 1` | When the weekly auto-generate job fires |
+| `STRINGER_AUTO_GENERATE_TZ` | `Asia/Tbilisi` | Timezone for the cron above |
+| `STRINGER_ARTICLE_MODEL` | — | FQN of the host's article model — required only if you use `BlogTopic::article()` |
+| `STRINGER_SEED_DEFAULTS_ON_BOOT` | `true` | Auto-run seeders if tables are empty. Set `false` in containers that boot many short-lived consoles |
 
-### Filament admin
+---
+
+## 🛠️ Filament admin
 
 Install the Filament v5 admin panel and register the plugin:
 
@@ -80,39 +218,106 @@ public function panel(Panel $panel): Panel
 
 Four surfaces appear under the **Stringer** navigation group:
 
-- **Topics** — the queue. Edit a topic, click *Generate Now* to dispatch a draft job, *Spike* to reject.
-- **Prompts** — DB-backed prompt templates. Two seeded rows (`draft`, `translate`) with `{{placeholder}}` substitution; edit content / duplicate / toggle active without a deploy.
-- **Content Fields** — the field schema. Five seeded rows (`title`, `excerpt`, `body`, `tags`, `category`) covering the seven `FieldType` values. Add a new field and the LLM will be asked for it on the next draft.
-- **Settings** — voice card, body word cap, tag count, schedule cron + timezone, allowed chat ids overlay.
+### 📋 Topics (`BlogTopicResource`)
+
+The queue. Each row is a `BlogTopic` — a hint that became, or will become, a draft. Status lifecycle: `Queued` → `Drafting` → `Drafted` (or `Rejected` / `Failed`).
+
+Actions per row:
+- **Generate Now** — dispatches `GenerateDraftJob` immediately (same as `/generate {id}` from Telegram)
+- **Spike** — marks the topic `Rejected` without generating
+- **Edit** — opens the topic record. The per-topic G1 toggles live here:
+  - `auto_publish` — when `true`, a successful draft on this topic is published immediately, not held as draft
+  - `target_status` — overrides the article's status on write (`draft`, `published`, `review` — host's choice)
+
+### ✍️ Prompts (`StringerPromptResource`)
+
+DB-backed prompt templates. The seeder ships two rows:
+
+| Key | Purpose | Placeholders |
+|-----|---------|--------------|
+| `draft` | Used by `DraftGenerator` to ask the LLM for the full draft JSON | `{{voice}}`, `{{source}}`, `{{hint}}`, `{{context}}`, `{{categories}}`, `{{field_schema}}` |
+| `translate` | Used per locale when the LLM returns the primary locale only and per-locale translation calls are required | `{{english_text}}`, `{{target_locale}}` |
+
+Edit content directly, toggle `is_active` to disable, or add locale-specific overrides. Falls back to the baked-in `DefaultPromptBuilder` constants when no DB row matches.
+
+### 🧱 Content Fields (`StringerContentFieldResource`)
+
+The field schema — what the LLM is asked to produce on each draft. Each row defines one field on the host's content model.
+
+| Column | What it controls |
+|--------|------------------|
+| `name` | The key the LLM uses in its JSON output, and the property name on the host's Eloquent model |
+| `type` | One of seven `FieldType` values (below) — drives how `ArticleTarget` dispatches the value |
+| `locales` | Array of locale codes the LLM produces per-locale (`['en','ka','ru']`) — used by translatable types |
+| `max_length` | Character cap rendered into the prompt |
+| `max_words` | Word cap rendered into the prompt |
+| `min` / `max` | Generic bounds (e.g. `tags: min=3, max=5`) |
+| `instruction` | Per-field guidance shown to the LLM (e.g. "open with a concrete scenario, never a definition") |
+| `is_required` | LLM is told it MUST produce this field |
+| `sort_order` | Display + prompt order |
+| `is_active` | Soft toggle without losing the row |
+
+#### Field types
+
+| Type | Behavior |
+|------|----------|
+| `translatable_string` | `setTranslations($name, $perLocaleValues)` on host model |
+| `translatable_markdown` | Same as above; values are markdown — host adapter typically converts to HTML at write time |
+| `string` | Direct property assignment on host model |
+| `markdown` | Direct property assignment; host typically converts to HTML at write time |
+| `tag_list` | `syncTags($value)` on the host (Spatie tags). Supports both flat (`['laravel','queue']`) and per-locale (`{"en":[...], "ka":[...]}`) shapes |
+| `category` | Slug resolved against the host's category model; FK set on the article |
+| `integer` | Cast then direct property assignment |
+
+Add a row to expand the schema; the LLM will be asked for it on the next draft. No package code changes.
+
+### ⚙️ Settings (`ManageStringerSettings`)
+
+Single-form page at `/admin/manage-stringer-settings`. Persists to the singleton `stringer_settings` row.
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `voice_card` | text | Voice-card overlay shown to the LLM in the `{{voice}}` placeholder. Override the package default per host. Leave blank to fall back to the senior-engineer default. |
+| `body_word_cap` | int | Operator-side hint for the body word budget. Visible in the form as documentation of the active target; v0.1.0 still reads the binding cap from `StringerContentField.body.max_words`. |
+| `tag_count` | int | Operator-side hint for the desired tag count. v0.1.0 reads the binding count from `StringerContentField.tags.min` / `max`. |
+| `auto_generate_cron` | string | Overrides `STRINGER_AUTO_GENERATE_CRON` for the weekly auto-generate job. |
+| `auto_generate_timezone` | string | Overrides `STRINGER_AUTO_GENERATE_TZ`. |
+| `allowed_chat_ids` | array | Extra chat IDs on top of `STRINGER_TELEGRAM_ALLOWED_CHAT_IDS`. v0.1.0 is write-only from the package's perspective; runtime overlay over the env baseline lands in v0.2. |
+
+> 💡 The Settings page is a UX anchor for operator-edited config — the canonical `.env`-driven binding stays the source of truth for v0.1.0. v0.2 will let the page overlay env values at request time.
 
 ---
 
-## Usage
-
-### Telegram
+## 💬 Telegram
 
 Set the bot's webhook to `https://your-host.example/webhooks/telegram/{your-webhook-secret}`, then talk to it:
 
 | Trigger | Behavior |
 |---------|----------|
-| `/help` | List commands (Georgian by default — override the strings by binding your own command classes). |
-| `/list` | Show the 10 most recent topics with id, status, and a truncated hint. |
-| `/file` | Show pending (queued) topics. |
-| `/file write about X` | Enqueue a new `Manual` topic with the hint *"write about X"*. |
-| `/file 42` | Force-dispatch `GenerateDraftJob` for topic #42. |
-| `/draft …` | Alias for `/file …`. |
-| `/spike 42` | Mark topic #42 as Rejected. |
-| any other text | Enqueued as a new `Manual` topic. |
+| `/help` | List commands |
+| `/list` | Show the 10 most recent topics with id, status, and a truncated hint |
+| `/generate` | Show pending (queued) topics |
+| `/generate write about X` | Enqueue a new `Manual` topic with the hint *"write about X"* |
+| `/generate 42` | Force-dispatch `GenerateDraftJob` for topic #42 |
+| `/draft …` | Alias for `/generate …` |
+| `/spike 42` | Mark topic #42 as Rejected |
+| any other text | Enqueued as a new `Manual` topic |
 
-### Scheduler
-
-The provider auto-binds the weekly job: it picks the oldest `Queued` topic, or synthesizes an `Auto`-source topic from the host's first project / repository title when nothing's queued. Override the cadence via `STRINGER_AUTO_GENERATE_CRON` / `STRINGER_AUTO_GENERATE_TZ`.
+After a draft completes, the bot replies to the originating chat with `Draft #N is ready — <admin edit URL>`. Failures also notify the chat with the truncated error message.
 
 ---
 
-## Host integration
+## 🗓️ Scheduler
+
+The provider auto-binds a weekly job: it picks the oldest `Queued` topic, or synthesizes an `Auto`-source topic from the host's first project / repository title when nothing's queued. Override the cadence via `STRINGER_AUTO_GENERATE_CRON` / `STRINGER_AUTO_GENERATE_TZ` — or override per-tenant via the Settings page.
+
+---
+
+## 🔌 Host integration
 
 `stringer` is opinionated about the *pipeline* and agnostic about *where the drafts land*. Two contracts bind the package to the host's Eloquent model:
+
+### `ContentTarget` — where drafts are written
 
 ```php
 // app/Stringer/Adapters/ArticleTarget.php
@@ -120,6 +325,8 @@ The provider auto-binds the weekly job: it picks the oldest `Queued` topic, or s
 use App\Models\Article;
 use App\Models\ArticleCategory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
+use Spatie\Tags\Tag;
 use Stringer\Laravel\Contracts\ContentTarget;
 use Stringer\Laravel\DataObjects\LocalizedDraft;
 use Stringer\Laravel\Enums\FieldType;
@@ -137,38 +344,34 @@ final class ArticleTarget implements ContentTarget
     {
         $article = $this->articles->newInstance();
         $fields = StringerContentField::query()->where('is_active', true)->get()->keyBy('name');
-
         $pendingTags = [];
+
         foreach ($draft->fields as $name => $value) {
             $field = $fields->get($name);
             if (! $field) { continue; }
 
             match ($field->type) {
-                FieldType::TranslatableString,
-                FieldType::TranslatableMarkdown => $article->setTranslations($name, $value),
-                FieldType::TagList   => $pendingTags[$name] = $value,
-                FieldType::Category  => $this->assignCategory($article, $value),
-                FieldType::Integer   => $article->{$name} = (int) $value,
-                default              => $article->{$name} = $value,
+                FieldType::TranslatableString => $article->setTranslations($name, is_array($value) ? $value : []),
+                FieldType::TranslatableMarkdown => $article->setTranslations(
+                    $name,
+                    is_array($value) ? array_map(fn ($v) => is_string($v) ? (string) Str::markdown($v) : $v, $value) : [],
+                ),
+                FieldType::Markdown => $article->{$name} = is_string($value) ? (string) Str::markdown($value) : $value,
+                FieldType::TagList => $pendingTags[$name] = $value,
+                FieldType::Category => $this->assignCategory($article, $value),
+                FieldType::Integer => $article->{$name} = (int) $value,
+                default => $article->{$name} = $value,
             };
         }
 
-        // G1: per-topic opt-in. Default: draft + publish_at=null.
+        // G1: per-topic auto-publish opt-in. Default writes a draft.
         $article->status = $topic?->target_status ?? 'draft';
         $article->publish_at = ($topic && $topic->auto_publish) ? now() : null;
 
         $article->save();
-        foreach ($pendingTags as $tags) { $article->syncTags($tags); }
+        foreach ($pendingTags as $tagValue) { $this->syncTags($article, $tagValue); }
 
         return $article;
-    }
-
-    private function assignCategory(Article $article, ?string $slug): void
-    {
-        if (! $slug) { return; }
-        if ($category = $this->categories->where('slug', $slug)->first()) {
-            $article->article_category_id = $category->id;
-        }
     }
 
     public function editUrl(Model $record): string
@@ -177,6 +380,8 @@ final class ArticleTarget implements ContentTarget
     }
 }
 ```
+
+### `ContextBuilder` — what the LLM sees as reference
 
 ```php
 // app/Stringer/Adapters/PublicContextBuilder.php
@@ -196,14 +401,10 @@ final class PublicContextBuilder implements ContextBuilder
     public function build(): array
     {
         return [
-            'articles' => $this->articles->published()->latest()->limit(20)->get()
-                ->map(fn ($a) => ['title' => $a->getTranslation('title', 'en'),
-                                  'excerpt' => $a->getTranslation('excerpt', 'en')])->all(),
-            'projects' => /* same shape */ [],
-            'repositories' => /* same shape */ [],
-            'categories' => $this->categories->ordered()->get()
-                ->map(fn ($c) => ['name' => $c->name, 'slug' => $c->slug, 'description' => $c->description])
-                ->all(),
+            'articles' => /* recent published articles, projected to {title, excerpt} */,
+            'projects' => /* recent visible projects */,
+            'repositories' => /* recent visible repositories */,
+            'categories' => /* all categories, projected to {name, slug, description} */,
         ];
     }
 }
@@ -216,30 +417,129 @@ $this->app->bind(\Stringer\Laravel\Contracts\ContentTarget::class, ArticleTarget
 $this->app->bind(\Stringer\Laravel\Contracts\ContextBuilder::class, PublicContextBuilder::class);
 ```
 
-The `ContextBuilder` constructor's type signature **is** the G3 architectural enforcement: type-hinting only public-content + public-taxonomy models prevents finance / admin / user records from leaking into LLM context.
-
-### Dynamic fields
-
-Add a row to `StringerContentField` via Filament — say, `seo_meta_description` of type `TranslatableString`, `is_required=false`. On the next draft the LLM is asked for it; your `ContentTarget` iterator picks it up and writes via `setTranslations`. No package code changes.
-
-### Category resolution
-
-The seeded `category` field is `FieldType::Category`. The LLM emits a slug like `"backend"`. `ArticleTarget::assignCategory` resolves the slug against `ArticleCategory` and sets `article_category_id`. A slug that doesn't match an existing row is silently skipped — the host model keeps the default category.
+> 🛡️ The `ContextBuilder` constructor's type signature **is** the G3 architectural enforcement: type-hinting only public-content + public-taxonomy models prevents finance / admin / user records from leaking into LLM context.
 
 ---
 
-## Guardrails
+## 🛡️ Guardrails
 
-The package enforces a small set of architectural rules:
+The package enforces a small set of architectural rules — these are what keep the pipeline safe to run unattended.
 
-- **Default writes drafts.** Auto-publish is per-topic opt-in via `BlogTopic.auto_publish` + `target_status`.
-- **Never touches `schema_json`.** The host content model regenerates JSON-LD at render time; package writes would conflict.
-- **No host coupling in `src/`.** Only the `Contracts/` interfaces are touched by host code.
-- **No public auth on the webhook.** Path-secret authentication + chat-id allowlist; never `auth:` middleware.
-- **Public taxonomy only in `ContextBuilder`.** The constructor type signature prevents finance / admin / user models from being injected.
+- **G1 — Default writes drafts.** Auto-publish is per-topic opt-in via `BlogTopic.auto_publish` + `target_status`. Hosts can't accidentally publish via the package.
+- **G2 — Never touches `schema_json`.** The host content model regenerates JSON-LD at render time; package writes would conflict.
+- **G3 — No host coupling in `src/`.** Only the `Contracts/` interfaces are touched by host code. Host models stay in the host app.
+- **G4 — No public auth on the webhook.** Path-secret authentication + chat-ID allowlist; never `auth:` middleware. Non-allowlisted chats get `200 OK` empty body so Telegram doesn't retry.
+- **G5 — Public taxonomy only in `ContextBuilder`.** The constructor type signature prevents finance / admin / user models from being injected.
+- **G6 — Zero AI footprint.** The sanitizer scrubs giveaway phrases the prompt couldn't suppress; commit messages and PR bodies stay in the operator's voice.
+- **G7 — Single chokepoint for status writes.** All `BlogTopic.status` mutations go through `Services\TopicQueue`. Activity log and metrics hooks attach there.
+- **G8 — One sanctioned PromptBuilder.** Only `Contracts\PromptBuilder` implementations produce strings sent to the LLM. No host code constructs prompts ad-hoc.
 
 ---
 
-## License
+## ❓ FAQ
 
-MIT. See [LICENSE](LICENSE).
+<details>
+<summary><strong>Can I use my own LLM provider?</strong></summary>
+
+Yes. Implement `Stringer\Laravel\Contracts\LlmClient` (one method, `request(string $message): string`), register it in `LlmManager`, and set `STRINGER_LLM_DRIVER=<your-name>`. The four built-ins (Gemini, Claude, OpenAI, Groq) are reference implementations.
+</details>
+
+<details>
+<summary><strong>How do I add a new field that the LLM should produce?</strong></summary>
+
+Add a row to `StringerContentField` via Filament. Pick the right `FieldType` (e.g. `translatable_string`), write an `instruction` that tells the LLM what you want, and toggle `is_active`. On the next draft the LLM is asked for it; `ArticleTarget` writes it to the matching column on your host model. No code change required.
+</details>
+
+<details>
+<summary><strong>What happens if the LLM call fails?</strong></summary>
+
+`GenerateDraftJob` has `$tries = 2` with `backoff = 30s`. The first attempt failing puts the topic in `Drafting`; the second failure calls `failed()` which marks it `Failed`, stores the error on `BlogTopic.last_error`, and (if Telegram is wired) DMs the requesting chat with the truncated error. No retries beyond the second attempt — the queue worker doesn't loop.
+</details>
+
+<details>
+<summary><strong>How do I customize the voice?</strong></summary>
+
+Three layers, in order of precedence:
+1. **`StringerSetting.voice_card`** — set via `/admin/manage-stringer-settings`. Per-host override.
+2. **`config('stringer.voice.default')`** — set via `.env`. Per-environment override.
+3. **Baked-in default** — defined in `DefaultPromptBuilder::renderDraft()`. Conservative senior-engineer voice.
+
+You can also edit the seeded `draft` prompt row in `/admin/stringer-prompt-resource/stringer-prompts` if you want to restructure the whole prompt template.
+</details>
+
+<details>
+<summary><strong>What does running this cost?</strong></summary>
+
+Per-draft estimates (one prompt + multi-locale output in one LLM call):
+
+| Provider | Model | Approx cost / draft |
+|----------|-------|--------------------:|
+| Gemini | `gemini-flash-latest` (free tier) | $0 |
+| Gemini | `gemini-2.5-flash` | ~$0.002 |
+| OpenAI | `gpt-4o-mini` | ~$0.005 |
+| Anthropic | `claude-sonnet-4-5` | ~$0.03 |
+| Groq | `llama-3.3-70b-versatile` (free tier) | $0 |
+
+Numbers assume a ~1500-word body + 8 SEO fields + 3 locales. Translation passes only happen if the LLM doesn't already return per-locale output in the first call (Gemini and Claude usually do; older models may not).
+</details>
+
+<details>
+<summary><strong>Does it generate images?</strong></summary>
+
+Not in v0.1.0. The host adapter is free to add an image-generation step in its `ContentTarget::write()` after stringer hands off the text fields — see the roadmap below for the v0.2 plan to integrate an image pipeline into the package itself.
+</details>
+
+<details>
+<summary><strong>Can I run it without Telegram?</strong></summary>
+
+Yes. Set `STRINGER_TELEGRAM_ENABLED=false` and the webhook route stops registering. Drive the queue from Filament (Generate Now action on a Topic row), from the scheduler (auto-generate weekly), or from tinker (`GenerateDraftJob::dispatch($topicId)`).
+</details>
+
+<details>
+<summary><strong>How do I rotate the Telegram webhook secret?</strong></summary>
+
+1. Generate a new 32-char random string: `openssl rand -base64 24 | tr -d '/=+\n' | head -c 32`
+2. Update `STRINGER_TELEGRAM_WEBHOOK_SECRET` in `.env`
+3. Update the webhook URL with Telegram: `curl "https://api.telegram.org/bot<token>/setWebhook?url=https://host/webhooks/telegram/<new-secret>"`
+
+Old in-flight requests to the previous secret get a `404` — Telegram retries briefly, then drops.
+</details>
+
+---
+
+## 🐛 Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `cURL error 28: Operation timed out` after 30s | Default Guzzle timeout on dense prompts | Bump `STRINGER_LLM_HTTP_TIMEOUT=180` (or higher) in `.env` |
+| `HTTP 429: quota exceeded` | LLM provider rate limit | Wait the cooldown window, switch model (`gemini-flash-latest` vs `gemini-2.5-flash`), or move to a paid tier |
+| `HTTP 503: model is overloaded` | Transient provider capacity | Retry after ~60s; this is upstream, not the package |
+| `SQLSTATE[22003]: Out of range value for column 'requested_by_chat_id'` | Telegram supergroup IDs need 64-bit signed | Already fixed in v0.1.0 migration; if you migrated from an earlier internal build, re-run migrations |
+| Tags render as `{"en": "..."}` in the UI | Filament option label not localized | `->getOptionLabelFromRecordUsing(fn ($t) => $t->getTranslation('name', app()->getLocale()))` on the Select |
+| Body shows raw markdown on the public site | Host renders `body` as HTML but stringer wrote markdown | Convert in `ArticleTarget::write()` with `Str::markdown($value)` for `Markdown` / `TranslatableMarkdown` fields |
+| Bot replies in the wrong language | The seeded replies are English; older internal builds shipped Georgian | Re-run `composer update` to pull the v0.1.0 strings |
+| Queue worker runs but topic stays `Drafting` | Worker is using stale opcache after a package update | Restart the worker process; `php artisan queue:restart` |
+| `Failed to open stream: StringerServiceProvider.php` | Path-repo composer install in copy mode hasn't synced | `composer update giorgigrdzelidze/laravel-stringer` then `php artisan optimize:clear` |
+
+---
+
+## 🗺️ Roadmap
+
+**v0.2** *(in design)* — runtime config overlay (Settings page wins over `.env`), two-pass `outline → expand` for long-form drafts, optional image-generation step in the pipeline, per-locale voice overrides.
+
+**v0.3** *(speculative)* — fact-check pass via a second LLM, semantic deduplication of generated bodies against existing articles, internal-linking suggestions from the host's `ContextBuilder` output.
+
+---
+
+## 🧪 Quality
+
+- 🧬 PHPStan **level 6** + Pint (Laravel preset, strict types, strict comparison, single quotes)
+- 🧪 Pest 4 + Orchestra Testbench, **119 tests / 292 assertions**, CI matrix across PHP 8.3 / 8.4 × Laravel 12 / 13
+- 🚀 Behind `Http::fake()` — every driver is mockable without live API calls
+- 📊 PHP `^8.3` (Pest 4 floor), Laravel `^12.0 || ^13.0`
+
+---
+
+## 📜 License
+
+MIT — see [LICENSE](LICENSE).

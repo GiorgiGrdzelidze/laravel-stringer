@@ -9,6 +9,7 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
+use Stringer\Laravel\Console\Commands\RegisterTelegramCommandsCommand;
 use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
@@ -19,6 +20,22 @@ use Stringer\Laravel\Jobs\AutoGenerateWeeklyJob;
 use Stringer\Laravel\Llm\LlmManager;
 use Stringer\Laravel\Prompts\DbPromptBuilder;
 use Stringer\Laravel\Services\TopicQueue;
+use Stringer\Laravel\Telegram\Menu\Contracts\CategoryDirectory;
+use Stringer\Laravel\Telegram\Menu\Contracts\ChatStateStore;
+use Stringer\Laravel\Telegram\Menu\Contracts\MenuTranslator;
+use Stringer\Laravel\Telegram\Menu\EloquentChatStateStore;
+use Stringer\Laravel\Telegram\Menu\MenuRenderer;
+use Stringer\Laravel\Telegram\Menu\MenuRouter;
+use Stringer\Laravel\Telegram\Menu\NullCategoryDirectory;
+use Stringer\Laravel\Telegram\Menu\PendingInputResolver;
+use Stringer\Laravel\Telegram\Menu\PendingInputStore;
+use Stringer\Laravel\Telegram\Menu\Stringer\CategoriesNode;
+use Stringer\Laravel\Telegram\Menu\Stringer\GenerateNode;
+use Stringer\Laravel\Telegram\Menu\Stringer\RootNode;
+use Stringer\Laravel\Telegram\Menu\Stringer\StringerDictionary;
+use Stringer\Laravel\Telegram\Menu\Stringer\TopicsNode;
+use Stringer\Laravel\Telegram\Menu\Translation\ArrayTranslator;
+use Stringer\Laravel\Telegram\Menu\Translation\BuiltinDictionary;
 use Stringer\Laravel\Telegram\TelegramClient;
 use Throwable;
 
@@ -41,6 +58,57 @@ final class StringerServiceProvider extends ServiceProvider
         $this->app->singleton(TelegramClient::class, function (): TelegramClient {
             return new TelegramClient((string) config('stringer.telegram.bot_token', ''));
         });
+
+        $this->registerMenuBindings();
+    }
+
+    /**
+     * Wire the Telegram menu services. Hosts can override individual bindings
+     * (e.g. swap `EloquentChatStateStore` for a cache-backed store) in their
+     * own ServiceProvider — these are registered with `bind`, not
+     * `singleton`-by-class, so they're overridable.
+     */
+    private function registerMenuBindings(): void
+    {
+        $this->app->singleton(ChatStateStore::class, EloquentChatStateStore::class);
+        $this->app->singleton(PendingInputStore::class);
+        $this->app->bind(CategoryDirectory::class, NullCategoryDirectory::class);
+
+        $this->app->singleton(MenuTranslator::class, function (): MenuTranslator {
+            return new ArrayTranslator(
+                array_replace_recursive(BuiltinDictionary::all(), StringerDictionary::all()),
+                fallbackLocale: (string) config('app.fallback_locale', 'en'),
+            );
+        });
+
+        $this->app->singleton(MenuRenderer::class);
+
+        $this->app->singleton(MenuRouter::class, function (Application $app): MenuRouter {
+            return new MenuRouter(
+                state: $app->make(ChatStateStore::class),
+                renderer: $app->make(MenuRenderer::class),
+                translator: $app->make(MenuTranslator::class),
+                rootResolver: fn (): RootNode => $app->make(RootNode::class),
+                defaultLocale: (string) config('app.locale', 'en'),
+            );
+        });
+
+        $this->app->singleton(PendingInputResolver::class, function (Application $app): PendingInputResolver {
+            return new PendingInputResolver(
+                pendingInputs: $app->make(PendingInputStore::class),
+                state: $app->make(ChatStateStore::class),
+                telegram: $app->make(TelegramClient::class),
+                translator: $app->make(MenuTranslator::class),
+                defaultLocale: (string) config('app.locale', 'en'),
+            );
+        });
+
+        // Stringer-specific node graph — host swaps these for their own
+        // implementations in projects that aren't Stringer.
+        $this->app->singleton(TopicsNode::class);
+        $this->app->singleton(GenerateNode::class);
+        $this->app->singleton(CategoriesNode::class);
+        $this->app->singleton(RootNode::class);
     }
 
     public function boot(): void
@@ -52,6 +120,10 @@ final class StringerServiceProvider extends ServiceProvider
         $this->registerScheduledJobs();
 
         if ($this->app->runningInConsole()) {
+            $this->commands([
+                RegisterTelegramCommandsCommand::class,
+            ]);
+
             $this->publishes([
                 __DIR__.'/../config/stringer.php' => config_path('stringer.php'),
             ], 'stringer-config');

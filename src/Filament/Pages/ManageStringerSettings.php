@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Stringer\Laravel\Filament\Pages;
 
+use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
@@ -99,5 +100,13 @@ final class ManageStringerSettings extends Page implements HasForms
             ->title('Settings saved.')
             ->success()
             ->send();
+    }
+
+    public function saveAction(): Action
+    {
+        return Action::make('save')
+            ->label('Save')
+            ->submit('save')
+            ->keyBindings(['mod+s']);
     }
 }
