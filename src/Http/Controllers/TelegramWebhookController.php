@@ -6,6 +6,7 @@ namespace Stringer\Laravel\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Stringer\Laravel\Telegram\CommandDispatcher;
 use Stringer\Laravel\Telegram\UpdateParser;
 use Throwable;
@@ -18,6 +19,10 @@ use Throwable;
  * outcome — Telegram retries non-2xx responses, which we don't want for
  * malformed updates or downstream failures (operator can re-issue a
  * `/file {id}` instead).
+ *
+ * Errors are logged to `daily` before being swallowed so a missing bot
+ * token, a malformed update, or a downstream throw doesn't disappear
+ * silently — the operator gets a daily-log breadcrumb to start from.
  */
 final class TelegramWebhookController
 {
@@ -33,10 +38,11 @@ final class TelegramWebhookController
             $update = $request->json()->all();
             $parsed = $this->parser->parse($update);
             $this->dispatcher->dispatch($parsed);
-        } catch (Throwable) {
-            // Swallow parse / dispatch errors so Telegram doesn't keep
-            // retrying the same broken update. The operator notices via
-            // the BlogTopic table (or its absence) and the daily log.
+        } catch (Throwable $e) {
+            Log::channel('daily')->error('stringer.telegram_webhook.failed', [
+                'error' => $e->getMessage(),
+                'exception' => $e::class,
+            ]);
         }
 
         return new JsonResponse(['ok' => true]);

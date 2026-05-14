@@ -167,6 +167,15 @@ it('treats /draft as an alias for /file', function () {
     expect(BlogTopic::first()?->hint)->toBe('write about queues');
 });
 
+it('falls back to free-text enqueue for unknown slash commands', function () {
+    $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, updatePayload('/notarealcommand here is the body'))
+        ->assertOk();
+
+    $topic = BlogTopic::first();
+    expect($topic?->hint)->toBe('here is the body')
+        ->and($topic?->source)->toBe(TopicSource::Manual);
+});
+
 it('returns 200 on a malformed payload (no message field) without retrying', function () {
     $this->postJson('/webhooks/telegram/'.WEBHOOK_SECRET, ['update_id' => 1])
         ->assertOk();
