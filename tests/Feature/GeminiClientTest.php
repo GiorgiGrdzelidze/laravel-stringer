@@ -11,21 +11,21 @@ beforeEach(function () {
     Http::preventStrayRequests();
 });
 
-it('posts the prompt + serialized context to the Gemini generateContent endpoint', function () {
+it('posts the prompt verbatim to the Gemini generateContent endpoint', function () {
     Http::fake([
         'generativelanguage.googleapis.com/*' => Http::response([
             'candidates' => [['content' => ['parts' => [['text' => 'drafted body']]]]],
         ]),
     ]);
 
+    $promptFromBuilder = 'Pre-built prompt from PromptBuilder. Voice: dry. Hint: laravel queues.';
+
     $client = new GeminiClient('test-key', 'gemini-2.0-flash');
-    $result = $client->draft('Write a post about Laravel queues.', [
-        'articles' => [['title' => 'Past Post', 'excerpt' => 'Excerpt']],
-    ]);
+    $result = $client->draft($promptFromBuilder, []);
 
     expect($result)->toBe('drafted body');
 
-    Http::assertSent(function (Request $request) {
+    Http::assertSent(function (Request $request) use ($promptFromBuilder) {
         if ($request->method() !== 'POST') {
             return false;
         }
@@ -40,29 +40,27 @@ it('posts the prompt + serialized context to the Gemini generateContent endpoint
 
         $message = data_get($request->data(), 'contents.0.parts.0.text');
 
-        return is_string($message)
-            && str_contains($message, 'Write a post about Laravel queues.')
-            && str_contains($message, 'Past Post');
+        return $message === $promptFromBuilder;
     });
 });
 
-it('extracts text from a Gemini translation response', function () {
+it('passes the translation prompt verbatim — does not add its own wrapping', function () {
     Http::fake([
         'generativelanguage.googleapis.com/*' => Http::response([
             'candidates' => [['content' => ['parts' => [['text' => 'თარგმანი']]]]],
         ]),
     ]);
 
+    $promptFromBuilder = 'Translate the following text from English to ka...\n\nHello';
+
     $client = new GeminiClient('test-key', 'gemini-2.0-flash');
 
-    expect($client->translate('Hello', 'en', 'ka'))->toBe('თარგმანი');
+    expect($client->translate($promptFromBuilder, 'en', 'ka'))->toBe('თარგმანი');
 
-    Http::assertSent(function (Request $request) {
+    Http::assertSent(function (Request $request) use ($promptFromBuilder) {
         $message = data_get($request->data(), 'contents.0.parts.0.text');
 
-        return is_string($message)
-            && str_contains($message, 'Translate the following text from en to ka')
-            && str_contains($message, 'Hello');
+        return $message === $promptFromBuilder;
     });
 });
 

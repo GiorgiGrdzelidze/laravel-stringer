@@ -27,6 +27,11 @@ use Stringer\Laravel\Models\StringerContentField;
  * via a second LLM call each. On any failure inside the transaction the
  * host's `ContentTarget::write()` is never reached and the topic stays
  * untouched — `GenerateDraftJob` (Phase 7) marks it Failed externally.
+ *
+ * The status transition into `Drafting` is intentionally owned by
+ * `GenerateDraftJob` (Phase 7), not by this class — the generator is
+ * synchronous and the job is the unit that fences against parallel
+ * retries.
  */
 final class DraftGenerator
 {

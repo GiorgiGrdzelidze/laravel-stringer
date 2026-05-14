@@ -11,6 +11,7 @@ use Stringer\Laravel\DataObjects\LocalizedDraft;
 use Stringer\Laravel\Enums\TopicSource;
 use Stringer\Laravel\Enums\TopicStatus;
 use Stringer\Laravel\Llm\LlmManager;
+use Stringer\Laravel\Models\StringerPrompt;
 use Stringer\Laravel\Services\DraftGenerator;
 use Stringer\Laravel\Services\TopicQueue;
 use Stringer\Laravel\Tests\Doubles\CapturingContentTarget;
@@ -223,6 +224,35 @@ it('skips translation entirely when only the primary locale is configured', func
 
     expect($client->translateCalls)->toBe([])
         ->and($target->capturedDraft?->field('title'))->toBe(['en' => 't']);
+});
+
+it('passes the PromptBuilder output to LlmClient::translate verbatim (no double wrapping)', function () {
+    StringerPrompt::create([
+        'key' => 'translate',
+        'locale' => null,
+        'content' => 'TRANSLATE-{{target_locale}}::{{english_text}}',
+        'variables' => [],
+        'is_active' => true,
+    ]);
+
+    $primary = json_encode([
+        'title' => 'EN Title', 'excerpt' => 'EN Excerpt', 'body' => 'EN Body',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+    ], JSON_THROW_ON_ERROR);
+
+    $llm = new ScriptedLlmClient($primary, array_fill(0, 6, 'TR'));
+    [, , $generator, , $client] = makeGenerator($llm);
+
+    $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
+
+    // The driver should have received the PromptBuilder's rendered template,
+    // not a doubly-wrapped string. With the DB template above + the seeded
+    // title field's primary value 'EN Title', the first translate call to
+    // 'ka' must equal 'TRANSLATE-ka::EN Title'.
+    $first = $client->translateCalls[0] ?? null;
+    expect($first)->not->toBeNull()
+        ->and($first['to'])->toBe('ka')
+        ->and($first['text'])->toBe('TRANSLATE-ka::EN Title');
 });
 
 it('strips code fences around the LLM JSON response', function () {

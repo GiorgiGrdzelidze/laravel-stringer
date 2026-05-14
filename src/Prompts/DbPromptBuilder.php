@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Stringer\Laravel\Prompts;
 
+use Illuminate\Database\QueryException;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Models\BlogTopic;
 use Stringer\Laravel\Models\StringerPrompt;
-use Throwable;
 
 /**
  * Default `PromptBuilder` binding. Reads `StringerPrompt` rows so the
@@ -56,9 +56,10 @@ final class DbPromptBuilder implements PromptBuilder
                 ->where('locale', $locale)
                 ->where('is_active', true)
                 ->first();
-        } catch (Throwable) {
-            // Stringer table may not exist yet (pre-migrate boot) or the
-            // DB may be unreachable; fall back to the baked-in template.
+        } catch (QueryException) {
+            // The stringer_prompts table may not exist yet (pre-migrate
+            // boot) or the DB may be unreachable. Anything else — like
+            // a malformed model or coding error — bubbles up.
             return null;
         }
 
