@@ -26,13 +26,13 @@ it('seeds the five baseline content fields with the expected shape', function ()
     $title = $fields->firstWhere('name', 'title');
     expect($title->type)->toBe(FieldType::TranslatableString)
         ->and($title->locales)->toBe(['en', 'ka', 'ru'])
-        ->and($title->max_length)->toBe(120)
+        ->and($title->max_length)->toBe(70)
         ->and($title->is_required)->toBeTrue();
 
     /** @var StringerContentField $body */
     $body = $fields->firstWhere('name', 'body');
     expect($body->type)->toBe(FieldType::TranslatableMarkdown)
-        ->and($body->max_words)->toBe(800);
+        ->and($body->max_words)->toBe(2500);
 
     /** @var StringerContentField $tags */
     $tags = $fields->firstWhere('name', 'tags');

@@ -27,6 +27,10 @@ return [
             'openai' => env('OPENAI_MODEL', 'gpt-4o-mini'),
             'groq' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
         ],
+        // HTTP timeout (seconds) for a single LLM round-trip. Dense prompts
+        // with multi-locale output and 2k+ word bodies routinely exceed
+        // Guzzle's 30s default — bump if you see cURL error 28.
+        'http_timeout' => (int) env('STRINGER_LLM_HTTP_TIMEOUT', 120),
     ],
 
     /*

@@ -22,6 +22,7 @@ final class GeminiClient extends AbstractLlmClient
         $this->requireApiKey();
 
         $response = Http::asJson()
+            ->timeout($this->timeoutSeconds)
             ->withQueryParameters(['key' => $this->apiKey])
             ->post(sprintf(self::ENDPOINT, $this->model), [
                 'contents' => [[

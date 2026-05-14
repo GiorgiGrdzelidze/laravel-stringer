@@ -70,7 +70,7 @@ it('substitutes voice, hint, source into the draft prompt', function () {
     expect($prompt)
         ->toContain('first-person, dry, technical confidence')
         ->toContain('what is laravel scout?')
-        ->toContain('Source: manual')
+        ->toContain('- Source: manual')
         ->toContain('- title [translatable_string, required]: SEO title.');
 
     expect(str_contains($prompt, '{{'))->toBeFalse();
@@ -130,7 +130,7 @@ it('substitutes target_locale and english_text into the translation prompt', fun
     $prompt = $builder->buildTranslationPrompt('Hello, world.', 'ka');
 
     expect($prompt)
-        ->toContain('Translate the following text from English to ka')
+        ->toContain('Translate the text below from English into ka.')
         ->toContain('Hello, world.');
 
     expect(str_contains($prompt, '{{'))->toBeFalse();

@@ -26,6 +26,7 @@ final class ClaudeClient extends AbstractLlmClient
         $this->requireApiKey();
 
         $response = Http::asJson()
+            ->timeout($this->timeoutSeconds)
             ->withHeaders([
                 'x-api-key' => $this->apiKey,
                 'anthropic-version' => self::API_VERSION,

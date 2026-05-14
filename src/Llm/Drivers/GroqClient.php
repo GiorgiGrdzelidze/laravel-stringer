@@ -23,6 +23,7 @@ final class GroqClient extends AbstractLlmClient
         $this->requireApiKey();
 
         $response = Http::asJson()
+            ->timeout($this->timeoutSeconds)
             ->withToken($this->apiKey)
             ->post(self::ENDPOINT, [
                 'model' => $this->model,

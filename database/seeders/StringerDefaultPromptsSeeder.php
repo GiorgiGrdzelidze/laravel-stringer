@@ -6,6 +6,7 @@ namespace Stringer\Laravel\Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Stringer\Laravel\Models\StringerPrompt;
+use Stringer\Laravel\Prompts\DefaultPromptBuilder;
 
 /**
  * Seeds the two neutral baseline prompt templates Stringer needs to start
@@ -50,36 +51,11 @@ final class StringerDefaultPromptsSeeder extends Seeder
 
     private static function draftTemplate(): string
     {
-        return <<<'TEMPLATE'
-You are drafting a blog post for human review.
-
-Voice: {{voice}}
-
-Source: {{source}}
-Topic hint: {{hint}}
-
-Reference context — recently published content on the site:
-{{context}}
-
-Available categories — choose ONE slug or leave null:
-{{categories}}
-
-Field schema — produce a single JSON object keyed by field name. Each
-field's value type is described below; honor the constraints exactly.
-{{field_schema}}
-
-Output the JSON only — no code fences, no preamble, no trailing prose.
-TEMPLATE;
+        return DefaultPromptBuilder::DRAFT_TEMPLATE;
     }
 
     private static function translateTemplate(): string
     {
-        return <<<'TEMPLATE'
-Translate the following text from English to {{target_locale}}. Preserve
-markdown structure, code blocks, JSON keys, HTML tags, and proper nouns.
-Output only the translation; no preamble, no quoting.
-
-{{english_text}}
-TEMPLATE;
+        return DefaultPromptBuilder::TRANSLATE_TEMPLATE;
     }
 }

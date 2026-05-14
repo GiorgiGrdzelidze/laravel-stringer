@@ -30,7 +30,7 @@ return new class extends Migration
             $table->unsignedBigInteger('article_id')->nullable();
             $table->string('generated_by')->nullable();
             $table->text('last_error')->nullable();
-            $table->unsignedBigInteger('requested_by_chat_id')->nullable();
+            $table->bigInteger('requested_by_chat_id')->nullable();
             $table->timestamp('drafted_at')->nullable();
             $table->timestamps();
 

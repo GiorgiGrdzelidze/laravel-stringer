@@ -74,9 +74,9 @@ it('falls back to DefaultPromptBuilder when the draft row is missing', function 
     );
 
     expect($prompt)
-        ->toContain('You are drafting a blog post for human review.')
-        ->toContain('Voice: test-voice')
-        ->toContain('Source: manual');
+        ->toContain('You are a senior staff engineer writing a long-form technical essay')
+        ->toContain('test-voice')
+        ->toContain('- Source: manual');
 });
 
 it('falls back to DefaultPromptBuilder when the draft row is inactive', function () {
@@ -90,7 +90,7 @@ it('falls back to DefaultPromptBuilder when the draft row is inactive', function
 
     $prompt = dbPromptBuilder()->buildDraftPrompt(topicFor(), [], []);
 
-    expect($prompt)->toContain('You are drafting a blog post for human review.');
+    expect($prompt)->toContain('You are a senior staff engineer writing a long-form technical essay');
 });
 
 it('prefers a locale-specific translate row over the generic one', function () {
@@ -122,6 +122,6 @@ it('falls back to DefaultPromptBuilder for translation when no row matches', fun
     $prompt = dbPromptBuilder()->buildTranslationPrompt('Hello', 'ru');
 
     expect($prompt)
-        ->toContain('Translate the following text from English to ru')
+        ->toContain('Translate the text below from English into ru.')
         ->toContain('Hello');
 });
