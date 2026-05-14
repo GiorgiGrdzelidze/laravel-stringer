@@ -22,10 +22,12 @@ use Stringer\Laravel\Services\TopicQueue;
  *  - If there's a Queued topic, dispatch GenerateDraftJob for the
  *    oldest one — the operator was going to handle it anyway, we just
  *    move them along.
- *  - Otherwise synthesize an `Auto`-source topic from the freshest
- *    title in the host's projects or repositories context, enqueue it,
- *    and dispatch. Keeps the publishing cadence alive without operator
- *    intervention. Skipped silently if the context is empty.
+ *  - Otherwise synthesize an `Auto`-source topic from the first
+ *    project (or repository, as fallback) entry the host's
+ *    ContextBuilder returns. The contract doesn't guarantee any
+ *    particular ordering, so "first" is what we promise. Host adapters
+ *    that want a specific cadence should return the freshest entry
+ *    first. Skipped silently if the context is empty.
  */
 final class AutoGenerateWeeklyJob implements ShouldQueue
 {

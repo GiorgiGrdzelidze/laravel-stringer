@@ -18,9 +18,8 @@ it('dispatches GenerateDraftJob for the oldest Queued topic when one exists', fu
     Bus::fake();
 
     $oldest = (new TopicQueue)->enqueue('oldest one', TopicSource::Manual);
-    sleep(0); // ensure deterministic created_at ordering (RefreshDatabase resets between tests)
     $newer = (new TopicQueue)->enqueue('newer one', TopicSource::Manual);
-    // Move newer's created_at forward so ordering is stable.
+    // Pin newer's created_at one second ahead so the orderBy is deterministic.
     $newer->created_at = $oldest->created_at->copy()->addSecond();
     $newer->save();
 
