@@ -44,6 +44,7 @@ final class BlogTopic extends Model
         'status' => TopicStatus::class,
         'source' => TopicSource::class,
         'auto_publish' => 'boolean',
+        'target_status' => 'string',
         'drafted_at' => 'datetime',
     ];
 
