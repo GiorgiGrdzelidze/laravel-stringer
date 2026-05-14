@@ -25,7 +25,7 @@ final class CommandDispatcher
     private const ROUTES = [
         'help' => HelpCommand::class,
         'list' => ListCommand::class,
-        'file' => FileCommand::class,
+        'generate' => FileCommand::class,
         'draft' => FileCommand::class,
         'spike' => SpikeCommand::class,
     ];

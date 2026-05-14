@@ -30,6 +30,6 @@ final class EnqueueFreeTextCommand implements Command
 
         $topic = $this->queue->enqueue($hint, TopicSource::Manual, chatId: $command->chatId);
 
-        $this->telegram->sendMessage($command->chatId, "თემა რიგში დაემატა #{$topic->id}.");
+        $this->telegram->sendMessage($command->chatId, "Topic #{$topic->id} added to the queue.");
     }
 }

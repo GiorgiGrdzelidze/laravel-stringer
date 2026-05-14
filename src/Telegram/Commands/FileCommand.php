@@ -55,12 +55,12 @@ final class FileCommand implements Command
             ->get();
 
         if ($pending->isEmpty()) {
-            $this->telegram->sendMessage($chatId, 'მოლოდინში არცერთი თემა.');
+            $this->telegram->sendMessage($chatId, 'No pending topics.');
 
             return;
         }
 
-        $lines = ['მოლოდინში:'];
+        $lines = ['Pending:'];
         foreach ($pending as $topic) {
             $hint = mb_strimwidth($topic->hint, 0, 60, '…');
             $lines[] = sprintf('#%d %s', $topic->id, $hint);
@@ -74,20 +74,20 @@ final class FileCommand implements Command
         $topic = BlogTopic::query()->find($topicId);
 
         if (! $topic instanceof BlogTopic) {
-            $this->telegram->sendMessage($chatId, "თემა #{$topicId} ვერ მოიძებნა.");
+            $this->telegram->sendMessage($chatId, "Topic #{$topicId} not found.");
 
             return;
         }
 
         GenerateDraftJob::dispatch($topic->id);
 
-        $this->telegram->sendMessage($chatId, "გენერაცია ჩაშვებულია #{$topic->id}.");
+        $this->telegram->sendMessage($chatId, "Generation dispatched for #{$topic->id}.");
     }
 
     private function enqueueManual(int $chatId, string $hint): void
     {
         $topic = $this->queue->enqueue($hint, TopicSource::Manual, chatId: $chatId);
 
-        $this->telegram->sendMessage($chatId, "თემა რიგში დაემატა #{$topic->id}.");
+        $this->telegram->sendMessage($chatId, "Topic #{$topic->id} added to the queue.");
     }
 }
