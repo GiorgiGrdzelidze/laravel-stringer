@@ -77,12 +77,37 @@ Open `/admin/blog-topic-resource/blog-topics` — your topic flips from `Queued`
 
 Inspect status, click *Generate Now*, or spike rejected hints.
 
-### Telegram flow
+### Filament — Articles dashboard
 
-| 1. Queue a topic | 2. Draft ready | 3. Error surfaced |
+![Articles](docs/screenshots/articles-list.png)
+
+Every draft lands with per-locale columns (`EN · KA · RU`), a cover thumbnail, and a category — never auto-published. The operator reviews each one before flipping the status to `published`.
+
+### Telegram — Draft pipeline
+
+| ✅ Draft ready | ❌ Error surfaced |
+|:---:|:---:|
+| ![Draft ready](docs/screenshots/telegram-draft-ready.png) | ![Error](docs/screenshots/telegram-error.png) |
+| Cover image + bold title + excerpt + stats + admin link land as a photo card with the host badge. One notification per drafted article. | Every upstream failure (LLM quota, image-API paid-plan, JSON parse error, slug collision) surfaces in chat with a humanized reason. Never have to grep logs to know what broke. |
+
+### Telegram — Menu navigation
+
+| 1. `/start` opens the root menu | 2. Drill into a category | 3. Settings & language |
 |:---:|:---:|:---:|
-| ![Step 1](docs/screenshots/telegram-flow-1.png) | ![Step 2](docs/screenshots/telegram-flow-2.png) | ![Step 3](docs/screenshots/telegram-flow-3.png) |
-| `/generate` or menu tap → topic enqueued, ack appears | Cover image + bold title + excerpt + stats land as a photo card with host badge and admin link | When an upstream call fails (quota, paid plan, parse error) the operator sees the reason in chat, never has to grep logs |
+| ![Menu root](docs/screenshots/telegram-flow-1.png) | ![Menu category](docs/screenshots/telegram-flow-2.png) | ![Menu settings](docs/screenshots/telegram-flow-3.png) |
+| Reply-keyboard menu reached via `/start` or `/menu`. Five top-level paths: Generate, Topics, Categories, Settings, Help. | Drill-down with persistent back buttons; per-chat state means you can leave and come back without losing your place. | Per-chat language preference (`en` / `ka` / `ru`), allowed-chat-ID list, and other operator knobs — all editable from inside Telegram. |
+
+### Filament — Operator surfaces
+
+| SEO tab — multi-channel | Settings page |
+|:---:|:---:|
+| ![SEO tab](docs/screenshots/article-seo-tab.png) | ![Settings](docs/screenshots/settings-page.png) |
+| `meta_title`, `meta_description`, `og_title`, `og_description`, `twitter_title`, `twitter_description` — all filled by the LLM per locale, all editable. | Voice card, body word cap, tag count, cron, timezone, allowed chat IDs — all editable in admin, no deploy. |
+
+| DB-editable prompts | Data-driven field schema |
+|:---:|:---:|
+| ![Prompts](docs/screenshots/prompts-list.png) | ![Content fields](docs/screenshots/content-fields-list.png) |
+| Three seeded templates: `draft`, `translate`, `cover_image`. Edit the prompt content directly to retune voice, style, or structure — the next generation uses the new template, no deploy. | 12 baseline fields shipped (`title`, `excerpt`, `slug`, `body`, `meta_*`, `og_*`, `twitter_*`, `tags`, `category`). Add your own, mark required, set per-locale constraints — the LLM is told to fill exactly the active schema. |
 
 ---
 
