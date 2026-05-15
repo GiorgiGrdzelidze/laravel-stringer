@@ -48,6 +48,17 @@ final class DbPromptBuilder implements PromptBuilder
         return $this->fallback->renderTranslation($template, $englishText, $targetLocale);
     }
 
+    public function buildImagePrompt(string $title, string $excerpt, string $style): string
+    {
+        $template = $this->lookup('cover_image', null);
+
+        if ($template === null) {
+            return $this->fallback->buildImagePrompt($title, $excerpt, $style);
+        }
+
+        return $this->fallback->renderImage($template, $title, $excerpt, $style);
+    }
+
     private function lookup(string $key, ?string $locale): ?string
     {
         try {

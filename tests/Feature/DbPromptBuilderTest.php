@@ -125,3 +125,41 @@ it('falls back to DefaultPromptBuilder for translation when no row matches', fun
         ->toContain('Translate the text below from English into ru.')
         ->toContain('Hello');
 });
+
+it('reads the cover_image template from the DB when one is active', function () {
+    StringerPrompt::create([
+        'key' => 'cover_image',
+        'locale' => null,
+        'content' => 'COVER[{{title}}|{{excerpt}}|{{style}}]',
+        'variables' => [],
+        'is_active' => true,
+    ]);
+
+    expect(dbPromptBuilder()->buildImagePrompt('T', 'E', 'minimal'))
+        ->toBe('COVER[T|E|minimal]');
+});
+
+it('falls back to DefaultPromptBuilder for cover_image when no row matches', function () {
+    expect(StringerPrompt::count())->toBe(0);
+
+    $prompt = dbPromptBuilder()->buildImagePrompt('A title', 'An excerpt', 'editorial');
+
+    expect($prompt)
+        ->toContain('A title')
+        ->toContain('An excerpt')
+        ->toContain('Style: editorial');
+});
+
+it('ignores inactive cover_image rows and falls through to the default', function () {
+    StringerPrompt::create([
+        'key' => 'cover_image',
+        'locale' => null,
+        'content' => 'INACTIVE-WONT-APPEAR',
+        'variables' => [],
+        'is_active' => false,
+    ]);
+
+    $prompt = dbPromptBuilder()->buildImagePrompt('T', 'E', 's');
+
+    expect($prompt)->not->toContain('INACTIVE-WONT-APPEAR');
+});

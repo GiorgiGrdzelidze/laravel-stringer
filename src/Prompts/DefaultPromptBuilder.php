@@ -36,6 +36,8 @@ You are a senior staff engineer writing a long-form technical essay for a public
 - Use H2 (`##`) and H3 (`###`) only — no H1, no H4+. Headings are sentence-case in English; native conventions in other locales.
 - One idea per paragraph. Paragraphs of 1–3 sentences are fine; paragraphs of 7+ are usually padding.
 - Close with a grounded recommendation — what should the reader actually do tomorrow morning? Never write "In conclusion" or "To sum up".
+- Populate EVERY field listed in the schema, including ones marked `optional`. Optional means "the host has a fallback if you omit it", not "skip it". In particular, ALWAYS emit `slug` with one URL slug per locale — the host's auto-fallback produces verbose slugified-title slugs that hurt SEO; your job is to provide punchy, keyword-focused slugs that follow that field's instruction exactly.
+- Body length is a contract, not a suggestion. A body field with `max_words=2500` MUST land between 1800 and 2500 words in English. Under 1500 words means you stopped early — expand the Implementation and Edge cases sections with another concrete sub-example until you reach the floor. Translations may run ±15% of the English length.
 
 # Required body structure
 The body MUST work through the following sections in order. Skip a section only if it is genuinely not applicable (e.g. there is no realistic anti-pattern). When you skip, do not pad — just move on.
@@ -116,6 +118,54 @@ Rules:
 {{english_text}}
 TEMPLATE;
 
+    public const IMAGE_TEMPLATE = <<<'TEMPLATE'
+You are an editorial art director writing the visual prompt for a single cover image that will appear at the top of a long-form article. The image model is literal — it renders exactly what you describe. So your job is to translate the article's central idea into one specific physical scene that a photographer or illustrator could capture today.
+
+# Article
+- Title: {{title}}
+- Excerpt: {{excerpt}}
+
+# How to pick the scene
+Take the central idea from the title and excerpt, then translate it into ONE specific, literal, physical scene. Not symbolic. Not abstract. Examples of literal-not-symbolic translation:
+
+- "Spotting and fixing N+1 query bugs in Eloquent" → A tangled cluster of red telephone-cord cables coiled on a worn oak desk beside a half-empty enamel mug, single desk lamp casting a warm pool of light from the upper right.
+- "Building idempotent queue jobs in Laravel" → An overhead aerial shot of a row of identical brass postage stamps on cream paper, each stamped once with the same blue inkpad, the inkpad open in the bottom-right corner.
+- "Bank of Georgia checkout integration" → A hand placing a contactless card on a small terminal at an evening market stall in old Tbilisi, golden hour light through string-lights, blurred storefront behind.
+- "Stalin's preservation of imperial archives" → A documentary still life of a single open archive folder on a wooden table, period brass paperweight holding it open, dust motes visible in a single shaft of north-window light.
+- "Turtle Lake at dawn" → A wide tranquil shot of mist rising off a reservoir, single rowboat moored at a small wooden jetty in the lower-third foreground, soft cool light, no visible figures.
+
+# Composition (mandatory)
+- 16:9 landscape. Rule-of-thirds composition — place the focal subject at one intersection, leave generous negative space at another (where an overlay headline or page chrome could sit without fighting the image).
+- ONE focal subject. No collages, no split-screens, no "and also X" stacking, no triptychs.
+- Lighting must be specified concretely: golden-hour, cool morning, single desk lamp, north-facing window, harsh overhead fluorescent, etc. Pick one mood and commit.
+- Specify medium: "documentary photograph" / "editorial illustration" / "flat vector illustration" / "watercolor sketch" — default to whatever matches the article's tone, with the global style suffix overriding when applicable.
+- For photographs, specify camera angle (eye-level / three-quarter / overhead / low-angle). For illustrations, specify perspective (front-on / isometric / overhead / 3/4 perspective).
+- Include a depth cue: foreground element + middle ground subject + softly defocused background, OR a flat editorial composition with deliberate use of empty space.
+
+# Tone calibration
+Read the excerpt and pick the right register:
+- Tactile / hands-on / incident report → documentary photograph, warm grain, real materials (wood, brass, fabric, paper).
+- Conceptual / mechanism explainer → editorial illustration, restrained two- or three-tone palette, clean line work, geometric clarity.
+- Lifestyle / travel / place piece → atmospheric photograph anchored to a recognizable real-world setting, natural light, sense of presence.
+- Documentary / historical → archival photograph or museum still life, muted desaturated palette, period-correct objects and surfaces.
+
+# Hard exclusions (image-model-killers)
+- NO text in the image. No logos, no brand marks, no signage with readable letters, no UI mockups, no code editors, no terminal screens, no charts, no graphs, no tables.
+- NO close-up human faces. Hands, backs of heads, silhouettes from behind, and small figures from a distance are fine; anything that prompts the model to render facial features is not.
+- NO clichés: tangled rope for "complexity", lightbulbs for "idea", glowing networks of nodes for "data", crystal balls for "future", chess pieces for "strategy", jigsaw puzzles for "fit".
+- NO marketing-deck aesthetics: glossy 3D renders of generic "innovation", floating geometric shapes, holographic AR overlays, gradient swooshes, drop-shadowed cards.
+- NO surreal mashups ("a brain made of clouds", "a fish riding a bicycle") — they look like AI slop.
+- NO generic stock-photo framings: business handshake, suited person pointing at empty whiteboard, hand placing wooden block on tower.
+
+# Output rules
+Output ONE prose sentence, 35-55 words. It must:
+- Start with the medium clause ("A documentary photograph of…" / "An editorial illustration of…").
+- Be entirely literal description — no instructions, no meta-commentary, no "the image should…", no quoted phrases from the title.
+- End with the literal style suffix: ". Style: {{style}}".
+
+Output ONLY that one sentence. No preamble. No quotes around it. No alternative options. No trailing explanation. The first character must be a capital letter; the last character must be a period.
+TEMPLATE;
+
     public function __construct(
         private readonly ConfigRepository $config,
     ) {}
@@ -128,6 +178,11 @@ TEMPLATE;
     public function buildTranslationPrompt(string $englishText, string $targetLocale): string
     {
         return $this->renderTranslation(self::TRANSLATE_TEMPLATE, $englishText, $targetLocale);
+    }
+
+    public function buildImagePrompt(string $title, string $excerpt, string $style): string
+    {
+        return $this->renderImage(self::IMAGE_TEMPLATE, $title, $excerpt, $style);
     }
 
     /**
@@ -158,6 +213,15 @@ TEMPLATE;
         return self::render($template, [
             'english_text' => $englishText,
             'target_locale' => $targetLocale,
+        ]);
+    }
+
+    public function renderImage(string $template, string $title, string $excerpt, string $style): string
+    {
+        return self::render($template, [
+            'title' => $title,
+            'excerpt' => $excerpt,
+            'style' => $style,
         ]);
     }
 

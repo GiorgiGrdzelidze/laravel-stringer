@@ -30,4 +30,12 @@ interface PromptBuilder
      * primary locale.
      */
     public function buildTranslationPrompt(string $englishText, string $targetLocale): string;
+
+    /**
+     * Build the visual-prompt string for the cover-image driver. Inputs
+     * are deliberately scalar so the prompt builder doesn't need to know
+     * about host models — callers project `title` + `excerpt` from the
+     * already-saved article and pick the global style suffix.
+     */
+    public function buildImagePrompt(string $title, string $excerpt, string $style): string;
 }
