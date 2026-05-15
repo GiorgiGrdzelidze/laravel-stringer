@@ -5,11 +5,13 @@ declare(strict_types=1);
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Enums\TopicSource;
 use Stringer\Laravel\Enums\TopicStatus;
+use Stringer\Laravel\Jobs\GenerateCoverImageJob;
 use Stringer\Laravel\Jobs\GenerateDraftJob;
 use Stringer\Laravel\Models\BlogTopic;
 use Stringer\Laravel\Services\AiTellSanitizer;
@@ -30,6 +32,11 @@ beforeEach(function () {
     config()->set('stringer.locales.list', ['en', 'ka', 'ru']);
 
     (new StringerDefaultContentFieldsSeeder)->run();
+
+    // The draft job dispatches GenerateCoverImageJob after a successful
+    // commit. Fake it here so these tests don't have to bind ContentTarget
+    // and ImageManager — those are covered by GenerateCoverImageJobTest.
+    Bus::fake([GenerateCoverImageJob::class]);
 });
 
 function bindDraftGeneratorWithScriptedLlm(ScriptedLlmClient $llm): void
@@ -48,10 +55,11 @@ function bindDraftGeneratorWithScriptedLlm(ScriptedLlmClient $llm): void
 
 it('runs the generator and leaves the topic Drafted on success', function () {
     $primary = json_encode([
-        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'meta_title' => 'mt', 'meta_description' => 'md',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
-    bindDraftGeneratorWithScriptedLlm(new ScriptedLlmClient($primary, array_fill(0, 6, 'tr')));
+    bindDraftGeneratorWithScriptedLlm(new ScriptedLlmClient($primary, array_fill(0, 12, 'tr')));
 
     $topic = (new TopicQueue)->enqueue('hint', TopicSource::Manual);
 
@@ -61,6 +69,29 @@ it('runs the generator and leaves the topic Drafted on success', function () {
     );
 
     expect($topic->fresh()->status)->toBe(TopicStatus::Drafted);
+
+    // Cover-image job is chained off a successful draft commit.
+    Bus::assertDispatched(GenerateCoverImageJob::class, fn (GenerateCoverImageJob $job) => $job->topicId === $topic->id);
+});
+
+it('does not dispatch the cover-image job when images are globally disabled', function () {
+    config()->set('stringer.images.enabled', false);
+
+    $primary = json_encode([
+        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'meta_title' => 'mt', 'meta_description' => 'md',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+    ], JSON_THROW_ON_ERROR);
+
+    bindDraftGeneratorWithScriptedLlm(new ScriptedLlmClient($primary, array_fill(0, 12, 'tr')));
+
+    $topic = (new TopicQueue)->enqueue('hint', TopicSource::Manual);
+
+    (new GenerateDraftJob($topic->id))->handle(
+        app(DraftGenerator::class),
+        app(TopicQueue::class),
+    );
+
+    Bus::assertNotDispatched(GenerateCoverImageJob::class);
 });
 
 it('skips when the topic is already Drafting and updated_at is within the last 5 minutes', function () {
@@ -84,10 +115,11 @@ it('skips when the topic is already Drafting and updated_at is within the last 5
 
 it('proceeds when the topic is Drafting but updated_at is older than 5 minutes', function () {
     $primary = json_encode([
-        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'meta_title' => 'mt', 'meta_description' => 'md',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
-    bindDraftGeneratorWithScriptedLlm(new ScriptedLlmClient($primary, array_fill(0, 6, 'tr')));
+    bindDraftGeneratorWithScriptedLlm(new ScriptedLlmClient($primary, array_fill(0, 12, 'tr')));
 
     $topic = (new TopicQueue)->enqueue('hint', TopicSource::Manual);
     (new TopicQueue)->markDrafting($topic);

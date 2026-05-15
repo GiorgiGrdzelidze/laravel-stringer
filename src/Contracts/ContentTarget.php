@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Stringer\Laravel\Contracts;
 
 use Illuminate\Database\Eloquent\Model;
+use Stringer\Laravel\DataObjects\GeneratedImage;
 use Stringer\Laravel\DataObjects\LocalizedDraft;
 use Stringer\Laravel\Models\BlogTopic;
 
@@ -35,4 +36,14 @@ interface ContentTarget
      * to link the human reviewer to the draft.
      */
     public function editUrl(Model $record): string;
+
+    /**
+     * Attach a generated cover image to the record. Hosts that opt into
+     * image generation implement this by piping `$image->bytes` into their
+     * media-storage layer (Spatie Media Library, native S3, …) and
+     * recording `sourceDriver`, `prompt`, and `attribution` for later
+     * inspection. Only called when `config('stringer.images.enabled')`
+     * is true — hosts that don't want covers can leave this as a no-op.
+     */
+    public function attachCover(Model $record, GeneratedImage $image): void;
 }

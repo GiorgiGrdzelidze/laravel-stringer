@@ -6,6 +6,7 @@ namespace Stringer\Laravel\Tests\Doubles;
 
 use Illuminate\Database\Eloquent\Model;
 use Stringer\Laravel\Contracts\ContentTarget;
+use Stringer\Laravel\DataObjects\GeneratedImage;
 use Stringer\Laravel\DataObjects\LocalizedDraft;
 use Stringer\Laravel\Enums\TopicSource;
 use Stringer\Laravel\Enums\TopicStatus;
@@ -40,5 +41,13 @@ final class CapturingContentTarget implements ContentTarget
     public function editUrl(Model $record): string
     {
         return 'https://example.test/admin/articles/'.$record->getKey();
+    }
+
+    /** @var list<array{record: Model, image: GeneratedImage}> */
+    public array $coversCaptured = [];
+
+    public function attachCover(Model $record, GeneratedImage $image): void
+    {
+        $this->coversCaptured[] = ['record' => $record, 'image' => $image];
     }
 }
