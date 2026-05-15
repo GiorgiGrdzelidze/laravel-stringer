@@ -17,6 +17,8 @@ final class GeminiClient extends AbstractLlmClient
 {
     private const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent';
 
+    private const MAX_OUTPUT_TOKENS = 8192;
+
     protected function request(string $message): string
     {
         $this->requireApiKey();
@@ -29,6 +31,10 @@ final class GeminiClient extends AbstractLlmClient
                     'parts' => [['text' => $message]],
                     'role' => 'user',
                 ]],
+                'generationConfig' => [
+                    'maxOutputTokens' => self::MAX_OUTPUT_TOKENS,
+                    'temperature' => 0.7,
+                ],
             ])
             ->throw();
 

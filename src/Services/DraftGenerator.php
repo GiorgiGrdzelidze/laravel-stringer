@@ -93,15 +93,23 @@ final class DraftGenerator
      */
     private function parseLlmJson(string $raw, array $fields): array
     {
-        $cleaned = trim($raw);
-        // Strip occasional code-fence wrapping.
-        $cleaned = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $cleaned) ?? $cleaned;
+        $cleaned = self::stripWrappers($raw);
 
         try {
             /** @var mixed $decoded */
             $decoded = json_decode($cleaned, associative: true, flags: JSON_THROW_ON_ERROR);
-        } catch (JsonException $e) {
-            throw new RuntimeException('LLM response is not valid JSON: '.$e->getMessage(), previous: $e);
+        } catch (JsonException $firstError) {
+            // LLMs ship malformed JSON in several recurring shapes. Run the
+            // cleanup pipeline and try once more. Each step is idempotent
+            // and safe-by-default; if all fixes still don't yield a valid
+            // document, surface the original error so debugging stays honest.
+            try {
+                $repaired = self::repairLlmJson($cleaned);
+                /** @var mixed $decoded */
+                $decoded = json_decode($repaired, associative: true, flags: JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                throw new RuntimeException('LLM response is not valid JSON: '.$firstError->getMessage(), previous: $firstError);
+            }
         }
 
         if (! is_array($decoded)) {
@@ -173,8 +181,26 @@ final class DraftGenerator
                     throw new RuntimeException("Translatable field '{$field->name}' is missing the primary locale '{$primaryLocale}'.");
                 }
 
+                // Backfill (or repair) non-primary locales by translating from
+                // the primary value when they are missing OR when the LLM
+                // returned the primary text verbatim (a common "lazy" shape on
+                // long fields like body: same English in every locale slot).
+                // Either case would otherwise produce "translations" that are
+                // still English — visible to the reader and bad for SEO.
                 foreach ($locales as $locale) {
-                    $perLocale[$locale] ??= $primaryValue;
+                    if ($locale === $primaryLocale) {
+                        continue;
+                    }
+
+                    $existing = $perLocale[$locale] ?? null;
+                    if (is_string($existing) && $existing !== '' && $existing !== $primaryValue) {
+                        continue;
+                    }
+
+                    $prompt = $this->promptBuilder->buildTranslationPrompt($primaryValue, $locale);
+                    $perLocale[$locale] = $this->sanitizer->sanitize(
+                        $llm->translate($prompt, $primaryLocale, $locale),
+                    );
                 }
 
                 $out[$field->name] = $perLocale;
@@ -199,6 +225,140 @@ final class DraftGenerator
             }
 
             $out[$field->name] = $perLocale;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Strip the wrappers LLMs habitually add around JSON output:
+     * leading/trailing whitespace, fenced code blocks (```json … ```),
+     * and any prose preamble before the first `{` or after the last `}`.
+     * Conservative — anything inside the JSON-object span is preserved
+     * verbatim; further repair (smart quotes, trailing commas, control
+     * chars) happens only if the strict parse fails.
+     */
+    private static function stripWrappers(string $raw): string
+    {
+        $cleaned = trim($raw);
+
+        $cleaned = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $cleaned) ?? $cleaned;
+        $cleaned = trim($cleaned);
+
+        $first = strpos($cleaned, '{');
+        $last = strrpos($cleaned, '}');
+        if ($first !== false && $last !== false && $last > $first) {
+            $cleaned = substr($cleaned, $first, $last - $first + 1);
+        }
+
+        return $cleaned;
+    }
+
+    /**
+     * Apply the standard set of "make this LLM output parseable" repairs:
+     * 1. Escape unescaped control characters inside string literals
+     *    (Gemini and Claude both drop real \n inside long body fields).
+     * 2. Normalize smart / curly quotes to straight quotes.
+     * 3. Strip trailing commas before `}` and `]`.
+     * Each step is conservative and only touches the regions where the
+     * malformation has been observed; the structural punctuation outside
+     * string scope is preserved.
+     */
+    private static function repairLlmJson(string $json): string
+    {
+        $json = self::escapeControlCharsInStrings($json);
+        $json = self::normalizeSmartQuotes($json);
+        $json = self::stripTrailingCommas($json);
+
+        return $json;
+    }
+
+    /**
+     * Replace U+201C / U+201D / U+2018 / U+2019 / U+00AB / U+00BB with
+     * straight ASCII quotes. LLM-emitted "smart" punctuation inside JSON
+     * string literals reliably breaks PHP's strict decoder.
+     */
+    private static function normalizeSmartQuotes(string $json): string
+    {
+        return strtr($json, [
+            "\u{201C}" => '"',
+            "\u{201D}" => '"',
+            "\u{2018}" => "'",
+            "\u{2019}" => "'",
+            "\u{00AB}" => '"',
+            "\u{00BB}" => '"',
+            "\u{201E}" => '"',
+            "\u{201F}" => '"',
+        ]);
+    }
+
+    /**
+     * Remove trailing commas before `}` or `]` (`{"k":"v",}` → `{"k":"v"}`).
+     * Many LLMs treat JSON like JavaScript and emit trailing commas after
+     * the last element of an object / array. The regex is safe because
+     * any literal comma followed by closing brace inside a string is
+     * already escaped or part of a comma+quote pair, not bare punctuation.
+     */
+    private static function stripTrailingCommas(string $json): string
+    {
+        return preg_replace('/,\s*([}\]])/u', '$1', $json) ?? $json;
+    }
+
+    /**
+     * Walk the JSON document and escape raw control characters that appear
+     * inside string literals. Tolerates the "LLM dropped a real newline
+     * inside a multi-paragraph body field" case without disturbing the
+     * structural punctuation (curly braces, commas, colons) that lives
+     * outside string scope.
+     */
+    private static function escapeControlCharsInStrings(string $json): string
+    {
+        $out = '';
+        $inString = false;
+        $escapeNext = false;
+        $length = strlen($json);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $json[$i];
+
+            if ($escapeNext) {
+                $out .= $char;
+                $escapeNext = false;
+
+                continue;
+            }
+
+            if ($inString && $char === '\\') {
+                $out .= $char;
+                $escapeNext = true;
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = ! $inString;
+                $out .= $char;
+
+                continue;
+            }
+
+            if ($inString) {
+                $code = ord($char);
+                if ($code < 0x20) {
+                    $out .= match ($char) {
+                        "\n" => '\\n',
+                        "\r" => '\\r',
+                        "\t" => '\\t',
+                        "\f" => '\\f',
+                        "\x08" => '\\b',
+                        default => sprintf('\\u%04x', $code),
+                    };
+
+                    continue;
+                }
+            }
+
+            $out .= $char;
         }
 
         return $out;
