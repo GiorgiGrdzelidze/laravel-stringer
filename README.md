@@ -8,7 +8,7 @@
 [![Pest](https://img.shields.io/badge/tests-pest%204-F86E58.svg)](https://pestphp.com)
 [![PHPStan](https://img.shields.io/badge/phpstan-level%206-blueviolet.svg)](https://phpstan.org)
 
-![Stringer Topics admin](docs/screenshots/topics-list.png)
+![Stringer Topics admin](docs/screenshots/topics-listing.png)
 
 ---
 
@@ -71,15 +71,18 @@ Open `/admin/blog-topic-resource/blog-topics` — your topic flips from `Queued`
 
 ## 🖼️ See it in action
 
-| Filament — Topics queue | Filament — Settings page |
-|:---:|:---:|
-| ![Topics](docs/screenshots/topics-list.png) | ![Settings](docs/screenshots/settings.png) |
-| Inspect status, click *Generate Now*, or spike rejected hints | Voice card, cron, allowed chat IDs — all editable, no deploy |
+### Filament — Topics queue
 
-| Filament — Content Fields | Telegram flow |
-|:---:|:---:|
-| ![Content Fields](docs/screenshots/content-fields.png) | ![Telegram](docs/screenshots/telegram-flow.png) |
-| Add a field → LLM is asked for it on the next draft | `/generate` → ack → success notification with the edit URL |
+![Topics](docs/screenshots/topics-listing.png)
+
+Inspect status, click *Generate Now*, or spike rejected hints.
+
+### Telegram flow
+
+| 1. Queue a topic | 2. Draft ready | 3. Error surfaced |
+|:---:|:---:|:---:|
+| ![Step 1](docs/screenshots/telegram-flow-1.png) | ![Step 2](docs/screenshots/telegram-flow-2.png) | ![Step 3](docs/screenshots/telegram-flow-3.png) |
+| `/generate` or menu tap → topic enqueued, ack appears | Cover image + bold title + excerpt + stats land as a photo card with host badge and admin link | When an upstream call fails (quota, paid plan, parse error) the operator sees the reason in chat, never has to grep logs |
 
 ---
 
