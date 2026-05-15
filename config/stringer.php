@@ -62,6 +62,69 @@ return [
             'intval',
             explode(',', (string) env('STRINGER_TELEGRAM_ALLOWED_CHAT_IDS', ''))
         ))),
+        // Optional public-facing host used to rewrite admin links sent over
+        // Telegram. Useful in local dev where editUrl() returns
+        // http://localhost/... (which Telegram refuses to linkify). Set to an
+        // ngrok URL like https://abc-123.ngrok-free.app while testing; leave
+        // unset in production so the host's APP_URL is used as-is.
+        'admin_base_url' => env('STRINGER_TELEGRAM_ADMIN_BASE_URL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cover-image generation
+    |--------------------------------------------------------------------------
+    | Drives the AI / stock-photo cover that ships with each draft. Default
+    | driver is Imagen 3 because it reuses STRINGER_GEMINI_API_KEY → zero new
+    | config for hosts already using Gemini. Switch to `unsplash` for a free
+    | path (stock photos with attribution), `dalle` for highest baseline
+    | quality, or `flux` for cheapest AI option.
+    |
+    | `require_confirmation` flips between auto-attach (popular: ship the
+    | cover with the draft) and operator-in-the-loop (safer: Telegram preview
+    | with ✅/🔁/✕ before saving). `max_regenerates_per_topic` caps how many
+    | times the operator can tap 🔁 before the job gives up.
+    */
+    'images' => [
+        'enabled' => env('STRINGER_IMAGE_ENABLED', true),
+        'driver' => env('STRINGER_IMAGE_DRIVER', 'gemini-image'),
+        'require_confirmation' => env('STRINGER_IMAGE_REQUIRE_CONFIRMATION', false),
+        'max_regenerates_per_topic' => (int) env('STRINGER_IMAGE_MAX_REGENERATES', 3),
+        'style' => env(
+            'STRINGER_IMAGE_STYLE',
+            'editorial illustration, muted color palette, no text, no logos, clean composition'
+        ),
+        'master_size' => env('STRINGER_IMAGE_MASTER_SIZE', '1792x1024'),
+        'http_timeout' => (int) env('STRINGER_IMAGE_HTTP_TIMEOUT', 60),
+        'drivers' => [
+            'imagen' => [
+                'api_key' => env('STRINGER_GEMINI_API_KEY'),
+                'model' => env('STRINGER_IMAGEN_MODEL', 'imagen-4.0-fast-generate-001'),
+            ],
+            'gemini-image' => [
+                'api_key' => env('STRINGER_GEMINI_API_KEY'),
+                'model' => env('STRINGER_GEMINI_IMAGE_MODEL', 'gemini-2.5-flash-image'),
+            ],
+            'unsplash' => [
+                'access_key' => env('STRINGER_UNSPLASH_ACCESS_KEY'),
+                'model' => '',
+            ],
+            'dalle' => [
+                'api_key' => env('STRINGER_OPENAI_API_KEY'),
+                'model' => env('STRINGER_DALLE_MODEL', 'dall-e-3'),
+            ],
+            'flux' => [
+                'api_key' => env('STRINGER_FAL_KEY'),
+                'model' => env('STRINGER_FLUX_MODEL', 'fal-ai/flux/dev'),
+            ],
+            // No-key placeholder driver — fetches a random photo from
+            // picsum.photos at the requested size. For dev / smoke-testing
+            // only; the image is unrelated to the topic.
+            'picsum' => [
+                'api_key' => '',
+                'model' => '',
+            ],
+        ],
     ],
 
     /*

@@ -18,7 +18,6 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
-use Stringer\Laravel\Filament\Resources\StringerPromptResource\Pages\CreateStringerPrompt;
 use Stringer\Laravel\Filament\Resources\StringerPromptResource\Pages\EditStringerPrompt;
 use Stringer\Laravel\Filament\Resources\StringerPromptResource\Pages\ListStringerPrompts;
 use Stringer\Laravel\Models\StringerPrompt;
@@ -34,7 +33,7 @@ final class StringerPromptResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            TextInput::make('key')->required()->datalist(['draft', 'translate']),
+            TextInput::make('key')->required()->datalist(['draft', 'translate', 'cover_image']),
             Select::make('locale')
                 ->options(['en' => 'en', 'ka' => 'ka', 'ru' => 'ru'])
                 ->placeholder('null (all locales)')
@@ -64,23 +63,24 @@ final class StringerPromptResource extends Resource
                 Action::make('toggleActive')
                     ->label(fn (StringerPrompt $record) => $record->is_active ? 'Deactivate' : 'Activate')
                     ->action(fn (StringerPrompt $record) => $record->update(['is_active' => ! $record->is_active])),
-                Action::make('duplicate')
-                    ->icon('heroicon-o-document-duplicate')
-                    ->action(function (StringerPrompt $record) {
-                        $clone = $record->replicate();
-                        $clone->is_active = false;
-                        $clone->description = ($record->description ?? '').' (copy)';
-                        $clone->save();
-                    }),
             ])
             ->defaultSort('key');
+    }
+
+    // Prompt rows are seeded by the package — there is exactly one canonical
+    // template per `(key, locale)` pair (`draft`, `translate`, `cover_image`).
+    // Operators only need to *edit* the seeded rows; creating new rows or
+    // duplicating existing ones is a footgun (the lookup picks `LIMIT 1`,
+    // so a stale duplicate can silently win over the operator's edits).
+    public static function canCreate(): bool
+    {
+        return false;
     }
 
     public static function getPages(): array
     {
         return [
             'index' => ListStringerPrompts::route('/'),
-            'create' => CreateStringerPrompt::route('/create'),
             'edit' => EditStringerPrompt::route('/{record}/edit'),
         ];
     }

@@ -61,29 +61,56 @@ final class TelegramClient
     }
 
     /**
+     * Send a photo to a chat. `$photoSource` may be either a publicly
+     * reachable URL (Telegram fetches it server-side) or an absolute
+     * local file path (we upload the bytes via multipart). Local paths
+     * are the right call for self-hosted media that's not exposed
+     * publicly, e.g. cover images stored in Spatie media library on a
+     * dev or behind-a-firewall server.
+     *
      * @param  array<string, mixed>  $replyMarkup
      * @return array<string, mixed>
      */
-    public function sendPhoto(int $chatId, string $photoUrl, ?string $caption = null, ?array $replyMarkup = null): array
-    {
+    public function sendPhoto(
+        int $chatId,
+        string $photoSource,
+        ?string $caption = null,
+        ?string $parseMode = null,
+        ?array $replyMarkup = null,
+    ): array {
         $this->requireBotToken();
 
         $payload = [
-            'chat_id' => $chatId,
-            'photo' => $photoUrl,
+            'chat_id' => (string) $chatId,
         ];
 
         if ($caption !== null) {
             $payload['caption'] = $caption;
         }
-
+        if ($parseMode !== null) {
+            $payload['parse_mode'] = $parseMode;
+        }
         if ($replyMarkup !== null) {
-            $payload['reply_markup'] = $replyMarkup;
+            $payload['reply_markup'] = json_encode($replyMarkup);
         }
 
-        $response = Http::asJson()
-            ->post($this->endpoint('sendPhoto'), $payload)
-            ->throw();
+        if (is_file($photoSource)) {
+            $bytes = file_get_contents($photoSource);
+            if ($bytes === false) {
+                throw new RuntimeException("Could not read photo file at {$photoSource}.");
+            }
+
+            $response = Http::attach('photo', $bytes, basename($photoSource))
+                ->asMultipart()
+                ->post($this->endpoint('sendPhoto'), $payload)
+                ->throw();
+        } else {
+            $payload['photo'] = $photoSource;
+
+            $response = Http::asJson()
+                ->post($this->endpoint('sendPhoto'), $payload)
+                ->throw();
+        }
 
         /** @var array<string, mixed> */
         return $response->json() ?? [];

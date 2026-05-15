@@ -99,6 +99,7 @@ final class MenuRenderer
             $ctx->chatId,
             $url,
             $caption,
+            null,
             $keyboard?->toArray(),
         );
     }

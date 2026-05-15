@@ -70,12 +70,14 @@ it('makes one draft call + one translate call per non-primary locale per transla
         'title' => 'Laravel Scout Deep Dive',
         'excerpt' => 'A quick intro to Scout indexing.',
         'body' => 'Body content in EN markdown.',
+        'meta_title' => 'Laravel Scout: a deep dive',
+        'meta_description' => 'Scout indexing, in depth.',
         'tags' => ['laravel', 'scout', 'search'],
         'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
-    // 3 translatable fields × 2 non-primary locales = 6 translate calls.
-    $translations = array_fill(0, 6, 'TRANSLATED');
+    // 5 required translatable fields × 2 non-primary locales = 10 translate calls.
+    $translations = array_fill(0, 10, 'TRANSLATED');
 
     $llm = new ScriptedLlmClient($primary, $translations);
     [, , $generator, $target, $client] = makeGenerator($llm);
@@ -85,7 +87,7 @@ it('makes one draft call + one translate call per non-primary locale per transla
     $result = $generator->generate($topic);
 
     expect($client->draftCalls)->toBe(1)
-        ->and(count($client->translateCalls))->toBe(6)
+        ->and(count($client->translateCalls))->toBe(10)
         ->and($target->wasCalled)->toBeTrue()
         ->and($target->capturedDraft)->toBeInstanceOf(LocalizedDraft::class)
         ->and($target->capturedTopic?->id)->toBe($topic->id)
@@ -97,6 +99,8 @@ it('writes a LocalizedDraft keyed by field name with locale arrays for translata
         'title' => 'EN Title',
         'excerpt' => 'EN Excerpt',
         'body' => 'EN Body',
+        'meta_title' => 'EN MetaTitle',
+        'meta_description' => 'EN MetaDescription',
         'tags' => ['a', 'b', 'c'],
         'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
@@ -105,6 +109,8 @@ it('writes a LocalizedDraft keyed by field name with locale arrays for translata
         'KA Title', 'RU Title',
         'KA Excerpt', 'RU Excerpt',
         'KA Body', 'RU Body',
+        'KA MetaTitle', 'RU MetaTitle',
+        'KA MetaDescription', 'RU MetaDescription',
     ]);
 
     [, , $generator, $target] = makeGenerator($llm);
@@ -126,10 +132,11 @@ it('writes a LocalizedDraft keyed by field name with locale arrays for translata
 
 it('marks the topic Drafted with the article id and generated_by after a successful run', function () {
     $primary = json_encode([
-        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'meta_title' => 'mt', 'meta_description' => 'md',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
-    $llm = new ScriptedLlmClient($primary, array_fill(0, 6, 'tr'));
+    $llm = new ScriptedLlmClient($primary, array_fill(0, 10, 'tr'));
     [, , $generator] = makeGenerator($llm);
     $topic = (new TopicQueue)->enqueue('hint', TopicSource::Manual);
 
@@ -172,7 +179,8 @@ it('rolls back when a required field is missing from the LLM response', function
 
 it('rolls back when a translation call fails', function () {
     $primary = json_encode([
-        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'meta_title' => 'mt', 'meta_description' => 'md',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
     // Empty translate queue → ScriptedLlmClient throws on first translate.
@@ -191,7 +199,8 @@ it('skips translation entirely when only the primary locale is configured', func
     config()->set('stringer.locales.list', ['en']);
 
     $primary = json_encode([
-        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+        'title' => 't', 'excerpt' => 'e', 'body' => 'b', 'meta_title' => 'mt', 'meta_description' => 'md',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
     $llm = new ScriptedLlmClient($primary);
@@ -216,10 +225,11 @@ it('passes the PromptBuilder output to LlmClient::translate verbatim (no double 
 
     $primary = json_encode([
         'title' => 'EN Title', 'excerpt' => 'EN Excerpt', 'body' => 'EN Body',
+        'meta_title' => 'EN MT', 'meta_description' => 'EN MD',
         'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR);
 
-    $llm = new ScriptedLlmClient($primary, array_fill(0, 6, 'TR'));
+    $llm = new ScriptedLlmClient($primary, array_fill(0, 10, 'TR'));
     [, , $generator, , $client] = makeGenerator($llm);
 
     $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
@@ -236,14 +246,57 @@ it('passes the PromptBuilder output to LlmClient::translate verbatim (no double 
 
 it('strips code fences around the LLM JSON response', function () {
     $primary = "```json\n".json_encode([
-        'title' => 'T', 'excerpt' => 'E', 'body' => 'B', 'tags' => ['x', 'y', 'z'], 'category' => 'backend',
+        'title' => 'T', 'excerpt' => 'E', 'body' => 'B', 'meta_title' => 'MT', 'meta_description' => 'MD',
+        'tags' => ['x', 'y', 'z'], 'category' => 'backend',
     ], JSON_THROW_ON_ERROR)."\n```";
 
-    $llm = new ScriptedLlmClient($primary, array_fill(0, 6, 'tr'));
+    $llm = new ScriptedLlmClient($primary, array_fill(0, 10, 'tr'));
     [, , $generator, $target] = makeGenerator($llm);
 
     $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
 
     // Sanitizer capitalises the first letter after sentence boundaries — 'tr' → 'Tr'.
     expect($target->capturedDraft?->field('title'))->toBe(['en' => 'T', 'ka' => 'Tr', 'ru' => 'Tr']);
+});
+
+it('repairs trailing commas, smart quotes, and pre/post-text around the LLM JSON object', function () {
+    // All three malformations observed in the wild from Gemini Flash on
+    // long-body drafts. Together they reproduce the "Syntax error" case
+    // that landed in chat as Draft #17 failed.
+    $raw = "Here is the JSON:\n\n".'{
+        "title": '."\u{201C}".'T'."\u{201D}".',
+        "excerpt": "E",
+        "body": "B",
+        "meta_title": "MT",
+        "meta_description": "MD",
+        "tags": ["x", "y", "z",],
+        "category": "backend",
+    }'."\n\nLet me know if you need anything else.";
+
+    $llm = new ScriptedLlmClient($raw, array_fill(0, 10, 'tr'));
+    [, , $generator, $target] = makeGenerator($llm);
+
+    $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
+
+    expect($target->wasCalled)->toBeTrue()
+        ->and($target->capturedDraft?->field('title')['en'])->toBe('T')
+        ->and($target->capturedDraft?->field('tags'))->toBe(['x', 'y', 'z']);
+});
+
+it('escapes unescaped control characters inside string literals before parsing', function () {
+    // Simulates a Gemini response where the body field contains a raw
+    // newline (real-world bug: 2026-05-15 topic 13 failed with
+    // "Control character error, possibly incorrectly encoded").
+    $raw = '{"title":"T","excerpt":"E","body":"line one'."\n".'line two","meta_title":"MT","meta_description":"MD","tags":["x","y","z"],"category":"backend"}';
+
+    $llm = new ScriptedLlmClient($raw, array_fill(0, 10, 'tr'));
+    [, , $generator, $target] = makeGenerator($llm);
+
+    $generator->generate((new TopicQueue)->enqueue('hint', TopicSource::Manual));
+
+    // Sanitizer capitalises sentence-start; the parser preserves the
+    // embedded newline, so both halves of the body survive.
+    expect($target->wasCalled)->toBeTrue()
+        ->and($target->capturedDraft?->field('body')['en'])->toContain('Line one')
+        ->and($target->capturedDraft?->field('body')['en'])->toContain('line two');
 });

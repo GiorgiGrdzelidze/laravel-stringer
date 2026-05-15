@@ -148,3 +148,30 @@ it('renderDraft and renderTranslation work with arbitrary template strings', fun
     $translated = $builder->renderTranslation($translateTemplate, 'hi', 'ru');
     expect($translated)->toBe('ru::hi');
 });
+
+it('substitutes title, excerpt, and style into the image prompt', function () {
+    $builder = new DefaultPromptBuilder(defaultPromptBuilderConfig());
+
+    $prompt = $builder->buildImagePrompt(
+        'Spotting and fixing N+1 query bugs in Eloquent',
+        'A 4.2-second category page, 247 queries behind it, and the eager-loading fix.',
+        'editorial illustration, muted palette, no text, no logos',
+    );
+
+    expect($prompt)
+        ->toContain('Spotting and fixing N+1 query bugs in Eloquent')
+        ->toContain('A 4.2-second category page')
+        ->toContain('Style: editorial illustration, muted palette, no text, no logos');
+
+    expect(str_contains($prompt, '{{'))->toBeFalse();
+});
+
+it('renderImage() works with arbitrary template strings', function () {
+    $builder = new DefaultPromptBuilder(defaultPromptBuilderConfig());
+
+    $template = '[{{title}}] {{excerpt}} ({{style}})';
+
+    $rendered = $builder->renderImage($template, 'My Title', 'My Excerpt', 'minimalist');
+
+    expect($rendered)->toBe('[My Title] My Excerpt (minimalist)');
+});

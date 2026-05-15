@@ -1,10 +1,14 @@
 <x-filament-panels::page>
-    <form wire:submit="save" class="grid gap-y-6">
-        <x-filament::section>
+    {{-- Inline styles, not Tailwind utility classes. The host's Tailwind
+         build only scans its own resource paths, so utility classes from
+         this package's blade views would be missing from the generated
+         CSS bundle. Inline styles work regardless of the host's setup. --}}
+    <form wire:submit="save">
+        <x-filament::section style="margin-bottom: 1.25rem">
             {{ $this->form }}
         </x-filament::section>
 
-        <div class="mt-4 flex items-center gap-3">
+        <div style="display: flex; align-items: center; gap: 0.75rem">
             {{ $this->saveAction }}
         </div>
     </form>
