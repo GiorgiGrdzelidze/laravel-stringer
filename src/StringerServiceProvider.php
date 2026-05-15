@@ -9,13 +9,16 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
+use Stringer\Laravel\Console\Commands\BackfillImagesCommand;
 use Stringer\Laravel\Console\Commands\RegisterTelegramCommandsCommand;
+use Stringer\Laravel\Contracts\ImageGenerator;
 use Stringer\Laravel\Contracts\LlmClient;
 use Stringer\Laravel\Contracts\PromptBuilder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultContentFieldsSeeder;
 use Stringer\Laravel\Database\Seeders\StringerDefaultPromptsSeeder;
 use Stringer\Laravel\Http\Controllers\TelegramWebhookController;
 use Stringer\Laravel\Http\Middleware\VerifyTelegramSecret;
+use Stringer\Laravel\Images\ImageManager;
 use Stringer\Laravel\Jobs\AutoGenerateWeeklyJob;
 use Stringer\Laravel\Llm\LlmManager;
 use Stringer\Laravel\Prompts\DbPromptBuilder;
@@ -50,6 +53,15 @@ final class StringerServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(LlmClient::class, fn (Application $app): LlmClient => $app->make(LlmManager::class)->make());
+
+        $this->app->singleton(ImageManager::class, function (Application $app): ImageManager {
+            return new ImageManager($app['config']);
+        });
+
+        $this->app->bind(
+            ImageGenerator::class,
+            fn (Application $app): ImageGenerator => $app->make(ImageManager::class)->make(),
+        );
 
         $this->app->singleton(TopicQueue::class);
 
@@ -122,6 +134,7 @@ final class StringerServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 RegisterTelegramCommandsCommand::class,
+                BackfillImagesCommand::class,
             ]);
 
             $this->publishes([
