@@ -221,18 +221,27 @@ final class GenerateDraftJob implements ShouldQueue
      * a Telegram-friendly length. Used by both the draft-failure and
      * cover-failure notification paths so the operator sees the same
      * shape regardless of which step blew up.
+     *
+     * Tolerant of Guzzle's body-summary truncation: `RequestException`
+     * clips the response body at ~120 chars and appends `(truncated...)`,
+     * which means the closing `"` of the `"message"` field is often
+     * missing. We accept either a real closing quote OR the truncation
+     * marker so the operator still gets useful prose from a clipped body.
      */
     public static function humanizeApiError(Throwable $error): string
     {
         $message = $error->getMessage();
 
-        if (preg_match('/"message"\s*:\s*"([^"]{4,200})"/', $message, $matches) === 1) {
+        // Match `"message": "..."`. Stops at the first real closing quote,
+        // a backslash-escaped boundary, or Guzzle's `(truncated` marker —
+        // whichever comes first.
+        if (preg_match('/"message"\s*:\s*"(.{4,500}?)(?:"|\s*\(truncated)/su', $message, $matches) === 1) {
             $code = '';
             if (preg_match('/"code"\s*:\s*(\d{3})/', $message, $codeMatch) === 1) {
                 $code = $codeMatch[1].' — ';
             }
 
-            return mb_strimwidth($code.$matches[1], 0, 280, '…');
+            return mb_strimwidth($code.trim($matches[1]), 0, 280, '…');
         }
 
         $cleaned = preg_replace('/^HTTP request returned status code (\d{3}):\s*/i', '$1 — ', $message) ?? $message;
