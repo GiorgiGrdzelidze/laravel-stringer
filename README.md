@@ -1,6 +1,6 @@
 # 🧵 laravel-stringer
 
-> A Telegram-driven LLM blog drafter for Laravel — pairs a chat-first interface with a configurable AI pipeline to produce **per-locale drafts** for human review. Never auto-publishes implicitly. Every part of the pipeline — prompts, field schema, voice card — is editable in Filament without a deploy.
+> A Telegram-driven LLM blog drafter for Laravel — pairs a chat-first interface with a configurable AI pipeline to produce **per-locale drafts with auto-generated cover images** for human review. Never auto-publishes implicitly. Every part of the pipeline — prompts, field schema, voice card, image style — is editable in Filament without a deploy.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![PHP](https://img.shields.io/badge/php-%5E8.3-777BB4.svg)](https://www.php.net)
@@ -64,7 +64,8 @@ Open `/admin/blog-topic-resource/blog-topics` — your topic flips from `Queued`
 3. 🤖 The LLM returns a JSON object keyed by field name. Translatable fields come back per-locale; non-translatable values pass through as-is.
 4. 🧹 A deterministic **AI-tell sanitizer** strips giveaway phrases ("furthermore", "in conclusion", "it's worth noting") before the draft is written.
 5. 📝 The package hands a `LocalizedDraft` to the host's `ContentTarget` adapter, which writes the draft as `status='draft'` for human review.
-6. 🚀 When the operator trusts the pipeline for a recurring topic, flipping `auto_publish` + `target_status` on the topic publishes it directly on the next generate.
+6. 🖼️ A chained `GenerateCoverImageJob` produces a cover image via the configured image driver (Imagen 3 / DALL-E 3 / FLUX / Unsplash), attaches it to the article, and Spatie Media Library auto-derives `og` (1200×630), `twitter` (1200×675), and `thumb` (400×225) crops.
+7. 🚀 When the operator trusts the pipeline for a recurring topic, flipping `auto_publish` + `target_status` on the topic publishes it directly on the next generate.
 
 ---
 
@@ -99,6 +100,10 @@ flowchart LR
   Llm --> San[AiTellSanitizer]
   San --> Tgt[ContentTarget host adapter]
   Tgt --> Art[(articles)]
+  Job --> CIJ[GenerateCoverImageJob]
+  CIJ --> IM[ImageManager → Imagen / Unsplash / DALL-E / FLUX]
+  IM --> Tgt
+  Tgt --> Media[(Spatie media: cover + og/twitter/thumb crops)]
   Job -. notifies .-> TG
 ```
 
@@ -120,6 +125,7 @@ The seeded defaults are built around **what experienced engineers actually want 
 | **Body field** | Max 1500 words, opens with a concrete scenario (never a definition), H2/H3 only, working code samples required |
 | **Tags field** | Multilingual — LLM returns `{"en":[...], "ka":[...], "ru":[...]}` with parallel index ordering. Tech / brand names not translated |
 | **Post-processing** | `AiTellSanitizer` strips ~30 giveaway phrases (`Furthermore,`, `Moreover,`, `In conclusion,`, `It's worth noting,`, `In today's fast-paced world,`, …) — case-insensitive, code-block-safe |
+| **Cover image** | Default driver Imagen 3 (reuses Gemini key, ~$0.03/image). One master 1792×1024 + auto-derived og/twitter/thumb crops. Editable visual prompt + style suffix |
 
 Every default is editable in Filament. Hosts that want a different voice, longer bodies, or different fields just change the rows — no deploy required.
 
@@ -197,6 +203,138 @@ The seeders are auto-run on the first console boot if their tables are empty; th
 | `STRINGER_AUTO_GENERATE_TZ` | `Asia/Tbilisi` | Timezone for the cron above |
 | `STRINGER_ARTICLE_MODEL` | — | FQN of the host's article model — required only if you use `BlogTopic::article()` |
 | `STRINGER_SEED_DEFAULTS_ON_BOOT` | `true` | Auto-run seeders if tables are empty. Set `false` in containers that boot many short-lived consoles |
+| `STRINGER_TELEGRAM_ADMIN_BASE_URL` | — | Optional public-facing host used to rewrite admin links sent over Telegram. Useful in local dev where `editUrl()` returns `http://localhost/...` — set to an ngrok URL while testing; leave unset in production |
+| **Cover images** | | |
+| `STRINGER_IMAGE_ENABLED` | `true` | Master switch — turn off to skip cover generation entirely |
+| `STRINGER_IMAGE_DRIVER` | `imagen` | `imagen` (default, reuses Gemini key), `unsplash`, `dalle`, or `flux` |
+| `STRINGER_IMAGE_STYLE` | editorial illustration… | One-line style suffix appended to every visual prompt. Edit to change the look across all drivers |
+| `STRINGER_IMAGE_MASTER_SIZE` | `1792x1024` | Master image size requested from the driver. Spatie crops down to `og`/`twitter`/`thumb` automatically |
+| `STRINGER_IMAGE_REQUIRE_CONFIRMATION` | `false` | If `true`, Telegram preview + ✅/🔁/✕ keyboard before the cover is attached *(deferred — flag wired, menu node not yet shipped)* |
+| `STRINGER_IMAGE_MAX_REGENERATES` | `3` | Ceiling on 🔁 regenerate taps per topic — prevents accidental runaway cost |
+| `STRINGER_IMAGE_HTTP_TIMEOUT` | `60` | HTTP timeout (seconds) for one image API round-trip |
+| `STRINGER_IMAGEN_MODEL` | `imagen-3.0-generate-001` | Imagen model identifier |
+| `STRINGER_UNSPLASH_ACCESS_KEY` | — | Access key when driver is `unsplash` (free path) |
+| `STRINGER_DALLE_MODEL` | `dall-e-3` | DALL-E model identifier |
+| `STRINGER_FAL_KEY` | — | API key when driver is `flux` (uses fal.ai) |
+| `STRINGER_FLUX_MODEL` | `fal-ai/flux/dev` | FLUX model identifier on fal.ai |
+
+---
+
+## 🖼️ Cover images
+
+Every draft gets an auto-generated cover. The cover job is **chained** off the draft job — if the LLM succeeds, the image pipeline runs next. Failure is non-fatal: a missing cover never unwinds the article, it just logs and exits.
+
+### Pipeline
+
+```
+GenerateDraftJob              ←  LLM + sanitize + write article
+       │
+       └── chains ───────►  GenerateCoverImageJob
+                                   │
+                                   ├── PromptBuilder::buildImagePrompt(title, excerpt, style)
+                                   │       → DB-row override or DefaultPromptBuilder::IMAGE_TEMPLATE
+                                   │
+                                   ├── ImageManager::make() → resolved driver
+                                   │       → ImagenClient | UnsplashClient | DallE3Client | FluxClient
+                                   │
+                                   └── ContentTarget::attachCover(article, GeneratedImage)
+                                           → Spatie media library 'cover' collection
+                                                  ↓
+                                                  + auto-derives og / twitter / thumb crops
+```
+
+### Drivers
+
+| Driver | Cost (per image) | Reuses existing key? | Strength |
+|--------|------------------|----------------------|----------|
+| **Imagen 3** *(default)* | ~$0.03 | ✅ `STRINGER_GEMINI_API_KEY` | Editorial, clean, zero new config |
+| **Unsplash** | Free | — needs `STRINGER_UNSPLASH_ACCESS_KEY` | Real photos with attribution, best for lifestyle topics |
+| **DALL-E 3** | $0.04 | — needs `STRINGER_OPENAI_API_KEY` | Strongest baseline quality |
+| **FLUX dev** | $0.025 | — needs `STRINGER_FAL_KEY` (fal.ai) | Best open-model output |
+
+Switch drivers with one env change — no code:
+
+```bash
+# free path: stock photos with attribution
+STRINGER_IMAGE_DRIVER=unsplash
+STRINGER_UNSPLASH_ACCESS_KEY=your-key
+```
+
+```bash
+# AI path: explicit DALL-E
+STRINGER_IMAGE_DRIVER=dalle
+STRINGER_OPENAI_API_KEY=sk-...
+```
+
+### Master image + automatic crops
+
+The driver produces **one** master image at `STRINGER_IMAGE_MASTER_SIZE` (default `1792x1024`). Spatie Media Library then auto-generates the social crops on the host model:
+
+```php
+// app/Models/Article.php
+public function registerMediaConversions(?Media $media = null): void
+{
+    $this->addMediaConversion('og')->fit(Fit::Crop, 1200, 630)->performOnCollections('cover');
+    $this->addMediaConversion('twitter')->fit(Fit::Crop, 1200, 675)->performOnCollections('cover');
+    $this->addMediaConversion('thumb')->fit(Fit::Crop, 400, 225)->performOnCollections('cover');
+}
+```
+
+Access from the host:
+
+```php
+$article->getFirstMediaUrl('cover');            // 1792x1024 master
+$article->getFirstMediaUrl('cover', 'og');      // 1200x630
+$article->getFirstMediaUrl('cover', 'twitter'); // 1200x675
+$article->getFirstMediaUrl('cover', 'thumb');   // 400x225
+```
+
+### Visual style
+
+The global `STRINGER_IMAGE_STYLE` string is appended to every visual prompt the LLM produces. Change it once and the look shifts across every driver:
+
+```bash
+# editorial / illustrative (default)
+STRINGER_IMAGE_STYLE="editorial illustration, muted color palette, no text, no logos, clean composition"
+
+# photoreal documentary
+STRINGER_IMAGE_STYLE="documentary photograph, natural light, 35mm, slight grain, no text"
+
+# vector poster
+STRINGER_IMAGE_STYLE="flat vector illustration, two-tone, geometric, no text"
+```
+
+The visual prompt itself is editable in Filament: open `/admin/stringer-prompts`, pick the `cover_image` row, and rewrite the template. Variables available: `{{title}}`, `{{excerpt}}`, `{{style}}`.
+
+### Backfill
+
+After enabling image generation on an existing install, dispatch the cover job for every drafted topic that still has no cover:
+
+```bash
+php artisan stringer:images:backfill                          # everything eligible
+php artisan stringer:images:backfill --driver=unsplash         # one-off driver override
+php artisan stringer:images:backfill --limit=10                # cap the batch
+php artisan stringer:images:backfill --sync                    # run inline, no queue
+```
+
+### Telemetry
+
+All failures land in the `daily` log channel — never raised:
+
+| Key | Meaning |
+|-----|---------|
+| `stringer.generate_cover_image_job.failed` | Driver threw (timeout, 4xx/5xx, bad response) |
+| `stringer.generate_cover_image_job.regenerate_ceiling_hit` | Operator hit `STRINGER_IMAGE_MAX_REGENERATES` |
+
+Every entry includes `topic_id`, `driver`, `error`, and `exception` class.
+
+### Disabling entirely
+
+```bash
+STRINGER_IMAGE_ENABLED=false
+```
+
+The draft job never dispatches the cover job — articles ship coverless. No code change needed.
 
 ---
 
@@ -377,6 +515,23 @@ final class ArticleTarget implements ContentTarget
     public function editUrl(Model $record): string
     {
         return \App\Filament\Resources\ArticleResource::getUrl('edit', ['record' => $record]);
+    }
+
+    public function attachCover(Model $record, \Stringer\Laravel\DataObjects\GeneratedImage $image): void
+    {
+        if (! $record instanceof Article) {
+            return;
+        }
+
+        $record
+            ->addMediaFromString($image->bytes)
+            ->usingFileName('cover-'.$record->getKey().'.'.$image->extension())
+            ->withCustomProperties([
+                'generator' => $image->sourceDriver,
+                'prompt' => $image->prompt,
+                'attribution' => $image->attribution,
+            ])
+            ->toMediaCollection('cover');
     }
 }
 ```
