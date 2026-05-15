@@ -1,22 +1,26 @@
 # Screenshots
 
-PNGs in this directory are wired into the main README. Recommended capture: ~1600px wide, light theme, with realistic data (not lorem-ipsum). PNG/WEBP preferred.
+PNGs wired into the main README. Recommended capture: ~1600px wide, light theme, with realistic data (not lorem-ipsum). PNG/WEBP preferred.
 
-## Currently in the README
+## Inventory
 
 | Filename | What it shows |
 |----------|---------------|
 | `topics-listing.png` | `/admin/blog-topic-resource/blog-topics` — list view with multiple topics in different states |
-| `telegram-flow-1.png` | A topic being queued via Telegram (menu tap or `/generate`), with the bot's ack message |
-| `telegram-flow-2.png` | Draft-ready photo card: cover image + bold title + excerpt + stats line + admin link |
-| `telegram-flow-3.png` | Failure notification: cover-driver quota / paid-plan / JSON parse error surfaced to chat |
+| `articles-list.png` | `/admin/articles` — articles dashboard with per-locale columns (EN · KA · RU), cover thumbnails, draft status |
+| `telegram-draft-ready.png` | Telegram chat with photo-card draft notifications — cover, title, excerpt, stats, admin link |
+| `telegram-error.png` | Telegram chat showing the failure notification format (host badge + reason + exception class) |
+| `telegram-flow-1.png` | Telegram menu root after `/start` |
+| `telegram-flow-2.png` | Menu drilled into a category |
+| `telegram-flow-3.png` | Menu showing Settings / language preference |
+| `article-seo-tab.png` | `/admin/articles/N/edit → SEO tab` with meta / OG / Twitter fields populated per locale |
+| `settings-page.png` | `/admin/manage-stringer-settings` form |
+| `prompts-list.png` | `/admin/stringer-prompt-resource/stringer-prompts` listing the 3 seeded prompt templates |
+| `content-fields-list.png` | `/admin/stringer-content-field-resource/stringer-content-fields` listing the 12 baseline fields |
 
-## Worth adding (would strengthen the README)
+## Optional follow-ups (not in README yet)
 
 | Filename | What to capture |
 |----------|-----------------|
-| `article-media-tab.png` | `/admin/articles/N/edit → Media tab` with the cover attached and the OG / Twitter upload slots visible. Proves the image pipeline + multi-channel overrides. |
-| `article-seo-tab.png` | `/admin/articles/N/edit → SEO tab` with `meta_title`, `meta_description`, `og_title`, `og_description`, `twitter_title`, `twitter_description` populated across `EN / KA / RU`. Proves multi-channel SEO. |
-| `settings-page.png` | `/admin/manage-stringer-settings` showing the form (Voice card, Body word cap, cron, allowed chat IDs). Proves no-deploy operator control. |
-| `prompts-list.png` *(optional)* | `/admin/stringer-prompt-resource/stringer-prompts` listing the 3 seeded rows (`draft`, `translate`, `cover_image`). Proves the DB-editable template surface. |
-| `content-fields-list.png` *(optional)* | `/admin/stringer-content-field-resource/stringer-content-fields` showing the 12 baseline fields. Proves the field schema is data-driven. |
+| `article-media-tab.png` | `/admin/articles/N/edit → Media tab` with a cover attached and the OG / Twitter override upload slots visible. Proves multi-channel image override. |
+| `article-translations-tab.png` | `/admin/articles/N/edit → Translations tab` with per-locale title / excerpt / body. Proves the per-locale draft pipeline visually. |
