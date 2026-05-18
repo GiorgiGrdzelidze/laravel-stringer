@@ -16,7 +16,7 @@ Cover image pipeline, multi-channel SEO, photo-card notifications, every-error-t
 - New artisan command `stringer:images:backfill` — dispatches `GenerateCoverImageJob` for every Drafted topic missing a cover, with `--driver=`, `--limit=`, and `--sync` options.
 - Per-driver master-size and aspect-ratio mapping (Imagen / FLUX accept arbitrary sizes; DALL-E snaps to its supported set; Unsplash searches landscape orientation).
 - `GeneratedImage` DTO carries `bytes`, `mime`, dimensions, `sourceDriver`, optional `attribution` (filled by Unsplash, null for AI), and the final `prompt` — so hosts can store an audit trail in `custom_properties`.
-- Hard cap on operator regenerate taps via `STRINGER_IMAGE_MAX_REGENERATES_PER_TOPIC=3` (default).
+- Hard cap on operator regenerate taps via `STRINGER_IMAGE_MAX_REGENERATES=3` (default).
 
 ### Image-prompt template
 - `PromptBuilder::buildImagePrompt(title, excerpt, style)` added to the contract.

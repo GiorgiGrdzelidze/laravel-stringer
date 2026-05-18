@@ -64,7 +64,7 @@ Open `/admin/blog-topic-resource/blog-topics` — your topic flips from `Queued`
 3. 🤖 The LLM returns a JSON object keyed by field name. Translatable fields come back per-locale; non-translatable values pass through as-is.
 4. 🧹 A deterministic **AI-tell sanitizer** strips giveaway phrases ("furthermore", "in conclusion", "it's worth noting") before the draft is written.
 5. 📝 The package hands a `LocalizedDraft` to the host's `ContentTarget` adapter, which writes the draft as `status='draft'` for human review.
-6. 🖼️ A chained `GenerateCoverImageJob` produces a cover image via the configured image driver (Imagen 3 / DALL-E 3 / FLUX / Unsplash), attaches it to the article, and Spatie Media Library auto-derives `og` (1200×630), `twitter` (1200×675), and `thumb` (400×225) crops.
+6. 🖼️ A chained `GenerateCoverImageJob` produces a cover image via the configured image driver (`gemini-image` / Imagen 3 / Unsplash / DALL-E 3 / FLUX / Picsum), attaches it to the article, and Spatie Media Library auto-derives `og` (1200×630), `twitter` (1200×675), and `thumb` (400×225) crops.
 7. 🚀 When the operator trusts the pipeline for a recurring topic, flipping `auto_publish` + `target_status` on the topic publishes it directly on the next generate.
 
 ---
@@ -129,7 +129,7 @@ flowchart LR
   San --> Tgt[ContentTarget host adapter]
   Tgt --> Art[(articles)]
   Job --> CIJ[GenerateCoverImageJob]
-  CIJ --> IM[ImageManager → Imagen / Unsplash / DALL-E / FLUX]
+  CIJ --> IM[ImageManager → Gemini-image / Imagen / Unsplash / DALL-E / FLUX / Picsum]
   IM --> Tgt
   Tgt --> Media[(Spatie media: cover + og/twitter/thumb crops)]
   Job -. notifies .-> TG
@@ -153,7 +153,7 @@ The seeded defaults are built around **what experienced engineers actually want 
 | **Body field** | Max 1500 words, opens with a concrete scenario (never a definition), H2/H3 only, working code samples required |
 | **Tags field** | Multilingual — LLM returns `{"en":[...], "ka":[...], "ru":[...]}` with parallel index ordering. Tech / brand names not translated |
 | **Post-processing** | `AiTellSanitizer` strips ~30 giveaway phrases (`Furthermore,`, `Moreover,`, `In conclusion,`, `It's worth noting,`, `In today's fast-paced world,`, …) — case-insensitive, code-block-safe |
-| **Cover image** | Default driver Imagen 3 (reuses Gemini key, ~$0.03/image). One master 1792×1024 + auto-derived og/twitter/thumb crops. Editable visual prompt + style suffix |
+| **Cover image** | Default driver `gemini-image` (free tier on Gemini, reuses `STRINGER_GEMINI_API_KEY`). One master 1792×1024 + auto-derived og/twitter/thumb crops. Editable visual prompt + style suffix |
 
 Every default is editable in Filament. Hosts that want a different voice, longer bodies, or different fields just change the rows — no deploy required.
 
@@ -234,13 +234,14 @@ The seeders are auto-run on the first console boot if their tables are empty; th
 | `STRINGER_TELEGRAM_ADMIN_BASE_URL` | — | Optional public-facing host used to rewrite admin links sent over Telegram. Useful in local dev where `editUrl()` returns `http://localhost/...` — set to an ngrok URL while testing; leave unset in production |
 | **Cover images** | | |
 | `STRINGER_IMAGE_ENABLED` | `true` | Master switch — turn off to skip cover generation entirely |
-| `STRINGER_IMAGE_DRIVER` | `imagen` | `imagen` (default, reuses Gemini key), `unsplash`, `dalle`, or `flux` |
+| `STRINGER_IMAGE_DRIVER` | `gemini-image` | `gemini-image` (default, free tier, reuses Gemini key), `imagen`, `unsplash`, `dalle`, `flux`, or `picsum` |
 | `STRINGER_IMAGE_STYLE` | editorial illustration… | One-line style suffix appended to every visual prompt. Edit to change the look across all drivers |
 | `STRINGER_IMAGE_MASTER_SIZE` | `1792x1024` | Master image size requested from the driver. Spatie crops down to `og`/`twitter`/`thumb` automatically |
 | `STRINGER_IMAGE_REQUIRE_CONFIRMATION` | `false` | If `true`, Telegram preview + ✅/🔁/✕ keyboard before the cover is attached *(deferred — flag wired, menu node not yet shipped)* |
 | `STRINGER_IMAGE_MAX_REGENERATES` | `3` | Ceiling on 🔁 regenerate taps per topic — prevents accidental runaway cost |
 | `STRINGER_IMAGE_HTTP_TIMEOUT` | `60` | HTTP timeout (seconds) for one image API round-trip |
 | `STRINGER_IMAGEN_MODEL` | `imagen-3.0-generate-001` | Imagen model identifier |
+| `STRINGER_GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-image` | Gemini image-generation model used by the `gemini-image` driver (free tier on Gemini) |
 | `STRINGER_UNSPLASH_ACCESS_KEY` | — | Access key when driver is `unsplash` (free path) |
 | `STRINGER_DALLE_MODEL` | `dall-e-3` | DALL-E model identifier |
 | `STRINGER_FAL_KEY` | — | API key when driver is `flux` (uses fal.ai) |
@@ -275,10 +276,12 @@ GenerateDraftJob              ←  LLM + sanitize + write article
 
 | Driver | Cost (per image) | Reuses existing key? | Strength |
 |--------|------------------|----------------------|----------|
-| **Imagen 3** *(default)* | ~$0.03 | ✅ `STRINGER_GEMINI_API_KEY` | Editorial, clean, zero new config |
+| **Gemini-image** *(default)* | Free tier on Gemini | ✅ `STRINGER_GEMINI_API_KEY` | Zero new config, free baseline (`gemini-2.5-flash-image`) |
+| **Imagen 3** | ~$0.03 | ✅ `STRINGER_GEMINI_API_KEY` | Editorial, clean — paid upgrade path from `gemini-image` |
 | **Unsplash** | Free | — needs `STRINGER_UNSPLASH_ACCESS_KEY` | Real photos with attribution, best for lifestyle topics |
 | **DALL-E 3** | $0.04 | — needs `STRINGER_OPENAI_API_KEY` | Strongest baseline quality |
 | **FLUX dev** | $0.025 | — needs `STRINGER_FAL_KEY` (fal.ai) | Best open-model output |
+| **Picsum** | Free | — no key | Placeholder images for smoke tests / CI |
 
 Switch drivers with one env change — no code:
 
@@ -444,13 +447,13 @@ Single-form page at `/admin/manage-stringer-settings`. Persists to the singleton
 | Field | Type | Purpose |
 |-------|------|---------|
 | `voice_card` | text | Voice-card overlay shown to the LLM in the `{{voice}}` placeholder. Override the package default per host. Leave blank to fall back to the senior-engineer default. |
-| `body_word_cap` | int | Operator-side hint for the body word budget. Visible in the form as documentation of the active target; v0.1.0 still reads the binding cap from `StringerContentField.body.max_words`. |
-| `tag_count` | int | Operator-side hint for the desired tag count. v0.1.0 reads the binding count from `StringerContentField.tags.min` / `max`. |
+| `body_word_cap` | int | Operator-side hint for the body word budget. Visible in the form as documentation of the active target; the binding cap is read from `StringerContentField.body.max_words`. |
+| `tag_count` | int | Operator-side hint for the desired tag count. The binding count is read from `StringerContentField.tags.min` / `max`. |
 | `auto_generate_cron` | string | Overrides `STRINGER_AUTO_GENERATE_CRON` for the weekly auto-generate job. |
 | `auto_generate_timezone` | string | Overrides `STRINGER_AUTO_GENERATE_TZ`. |
-| `allowed_chat_ids` | array | Extra chat IDs on top of `STRINGER_TELEGRAM_ALLOWED_CHAT_IDS`. v0.1.0 is write-only from the package's perspective; runtime overlay over the env baseline lands in v0.2. |
+| `allowed_chat_ids` | array | Extra chat IDs on top of `STRINGER_TELEGRAM_ALLOWED_CHAT_IDS`. Currently write-only from the package's perspective; runtime overlay over the env baseline is on the roadmap. |
 
-> 💡 The Settings page is a UX anchor for operator-edited config — the canonical `.env`-driven binding stays the source of truth for v0.1.0. v0.2 will let the page overlay env values at request time.
+> 💡 The Settings page is a UX anchor for operator-edited config — the canonical `.env`-driven binding stays the source of truth. Runtime overlay of env values from the Settings row is on the roadmap.
 
 ---
 
@@ -669,7 +672,7 @@ Numbers assume a ~1500-word body + 8 SEO fields + 3 locales. Translation passes 
 <details>
 <summary><strong>Does it generate images?</strong></summary>
 
-Not in v0.1.0. The host adapter is free to add an image-generation step in its `ContentTarget::write()` after stringer hands off the text fields — see the roadmap below for the v0.2 plan to integrate an image pipeline into the package itself.
+Yes — every successful draft chains into `GenerateCoverImageJob`, which produces a master cover image via the configured driver (`gemini-image` by default, free tier; alternatives: `imagen`, `unsplash`, `dalle`, `flux`, `picsum`). Spatie Media Library auto-derives `og` / `twitter` / `thumb` crops on the host. See the [Cover images](#%EF%B8%8F-cover-images) section for the pipeline, drivers, and backfill command.
 </details>
 
 <details>
@@ -708,16 +711,16 @@ Old in-flight requests to the previous secret get a `404` — Telegram retries b
 
 ## 🗺️ Roadmap
 
-**v0.2** *(in design)* — runtime config overlay (Settings page wins over `.env`), two-pass `outline → expand` for long-form drafts, optional image-generation step in the pipeline, per-locale voice overrides.
+**Planned** — runtime Settings overlay (DB row wins over `.env` at request time), per-locale voice overrides, ship the ✅/🔁/✕ confirmation keyboard (the `STRINGER_IMAGE_REQUIRE_CONFIRMATION` flag is wired but the menu node hasn't shipped yet).
 
-**v0.3** *(speculative)* — fact-check pass via a second LLM, semantic deduplication of generated bodies against existing articles, internal-linking suggestions from the host's `ContextBuilder` output.
+**Speculative** — fact-check pass via a second LLM, semantic deduplication of generated bodies against existing articles, internal-linking suggestions from the host's `ContextBuilder` output, two-pass `outline → expand` for long-form drafts.
 
 ---
 
 ## 🧪 Quality
 
 - 🧬 PHPStan **level 6** + Pint (Laravel preset, strict types, strict comparison, single quotes)
-- 🧪 Pest 4 + Orchestra Testbench, **119 tests / 292 assertions**, CI matrix across PHP 8.3 / 8.4 × Laravel 12 / 13
+- 🧪 Pest 4 + Orchestra Testbench, **175 tests / 470 assertions**, CI matrix across PHP 8.3 / 8.4 × Laravel 12 / 13
 - 🚀 Behind `Http::fake()` — every driver is mockable without live API calls
 - 📊 PHP `^8.3` (Pest 4 floor), Laravel `^12.0 || ^13.0`
 
